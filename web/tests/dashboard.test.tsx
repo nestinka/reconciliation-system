@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { axe } from "jest-axe";
 import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import DashboardPage from "@/app/(app)/dashboard/page";
 
@@ -140,6 +141,20 @@ describe("DashboardPage", () => {
     // A formatMoney result like "£12,345.67" must appear; raw minor units would
     // have no currency symbol or decimal point.
     expect(screen.getAllByText(/£[\d,]+\.\d{2}/).length).toBeGreaterThan(0);
+  });
+
+  it("has no critical a11y violations after load", async () => {
+    const { container } = renderWithProviders(<DashboardPage />, {
+      tenantId: "tenant-acme",
+    });
+    // Wait for data to resolve (KPI labels visible)
+    await waitFor(() => {
+      expect(screen.getByText("Open breaks")).toBeInTheDocument();
+    });
+    const results = await axe(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+    });
+    expect(results).toHaveNoViolations();
   });
 
   it("navigates to the run detail when a recent-run row is clicked", async () => {

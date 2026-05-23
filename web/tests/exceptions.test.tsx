@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { axe } from "jest-axe";
 import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import ExceptionsPage from "@/app/(app)/exceptions/page";
 
@@ -154,6 +155,19 @@ describe("ExceptionsPage (breaks/exceptions list)", () => {
     expect(
       screen.getByRole("combobox", { name: /filter by assignee/i })
     ).toBeInTheDocument();
+  });
+
+  it("has no critical a11y violations after load", async () => {
+    const { container } = renderWithProviders(<ExceptionsPage />, {
+      tenantId: "tenant-acme",
+    });
+    await waitFor(() => {
+      expect(screen.getAllByText("Open").length).toBeGreaterThan(0);
+    });
+    const results = await axe(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+    });
+    expect(results).toHaveNoViolations();
   });
 
   it("selecting multiple rows shows correct count in toolbar", async () => {

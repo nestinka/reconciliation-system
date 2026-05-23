@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { axe } from "jest-axe";
 import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import CaseDetailPage from "@/app/(app)/cases/[caseId]/page";
 
@@ -166,6 +167,22 @@ describe("CaseDetailPage", () => {
       },
       { timeout: 3000 }
     );
+  });
+
+  it("has no critical a11y violations after load (as Mia)", async () => {
+    const { container } = renderWithProviders(<CaseDetailPage />, {
+      tenantId: "tenant-acme",
+      currentUserId: "user-mia",
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /investigate break-pending/i })
+      ).toBeInTheDocument();
+    });
+    const results = await axe(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+    });
+    expect(results).toHaveNoViolations();
   });
 
   it("shows a loading skeleton while data is fetching", () => {

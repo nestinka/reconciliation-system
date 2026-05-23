@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { axe } from "jest-axe";
 import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import RunDetailPage from "@/app/(app)/runs/[runId]/page";
 
@@ -179,5 +180,20 @@ describe("RunDetailPage", () => {
     });
     // "Started:" label should be present
     expect(screen.getByText(/Started:/)).toBeInTheDocument();
+  });
+
+  it("has no critical a11y violations after load", async () => {
+    const { container } = renderWithProviders(<RunDetailPage />, {
+      tenantId: "tenant-acme",
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Daily Bank-GL 2026-05-01" })
+      ).toBeInTheDocument();
+    });
+    const results = await axe(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+    });
+    expect(results).toHaveNoViolations();
   });
 });

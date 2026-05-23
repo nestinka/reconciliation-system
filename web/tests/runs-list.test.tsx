@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { axe } from "jest-axe";
 import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import RunsPage from "@/app/(app)/runs/page";
 
@@ -112,5 +113,20 @@ describe("RunsPage (runs list)", () => {
     renderWithProviders(<RunsPage />, { tenantId: "tenant-acme" });
     // The 0-latency mock resolves on a microtask, so the synchronous render is loading
     expect(document.querySelector("[data-slot='skeleton']")).toBeTruthy();
+  });
+
+  it("has no critical a11y violations after load", async () => {
+    const { container } = renderWithProviders(<RunsPage />, {
+      tenantId: "tenant-acme",
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByText("Daily Bank-GL 2026-05-01")
+      ).toBeInTheDocument();
+    });
+    const results = await axe(container, {
+      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] },
+    });
+    expect(results).toHaveNoViolations();
   });
 });
