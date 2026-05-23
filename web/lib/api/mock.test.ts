@@ -26,6 +26,27 @@ describe("MockApiClient", () => {
     expect(res.brk.id).toBe("break-pending");
     expect(Array.isArray(res.suggestions)).toBe(true);
   });
+  it("getCase returns a non-empty transactionsById for case-pending", async () => {
+    const c = api();
+    const res = await c.getCase("tenant-acme", "case-pending");
+    expect(typeof res.transactionsById).toBe("object");
+    expect(Object.keys(res.transactionsById).length).toBeGreaterThan(0);
+    // break-pending references txn-brk001 which should be in the map
+    expect(res.transactionsById["txn-brk001"]).toBeDefined();
+  });
+  it("appendCaseEvent with assignment sets the case assigneeId", async () => {
+    const c = api();
+    // Start with case-001 (open, no assignee)
+    const updated = await c.appendCaseEvent("tenant-acme", "case-001", {
+      kind: "assignment",
+      actorId: "user-ada",
+      payload: { assigneeId: "user-theo" },
+    });
+    expect(updated.assigneeId).toBe("user-theo");
+    // Verify the event was appended
+    const lastEvent = updated.events[updated.events.length - 1];
+    expect(lastEvent.kind).toBe("assignment");
+  });
   it("appendCaseEvent is append-only and does not mutate prior reads", async () => {
     const c = api();
     const before = (await c.getCase("tenant-acme", "case-pending")).case;

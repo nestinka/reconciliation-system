@@ -66,7 +66,12 @@ export interface ApiClient {
   getCase(
     tenantId: string,
     caseId: string
-  ): Promise<{ case: Case; brk: Break; suggestions: MatchSuggestion[] }>;
+  ): Promise<{
+    case: Case;
+    brk: Break;
+    suggestions: MatchSuggestion[];
+    transactionsById: Record<string, CanonicalTransaction>;
+  }>;
   assignBreak(
     tenantId: string,
     breakId: string,

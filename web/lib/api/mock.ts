@@ -231,7 +231,12 @@ export class MockApiClient implements ApiClient {
   async getCase(
     tenantId: string,
     caseId: string
-  ): Promise<{ case: Case; brk: Break; suggestions: MatchSuggestion[] }> {
+  ): Promise<{
+    case: Case;
+    brk: Break;
+    suggestions: MatchSuggestion[];
+    transactionsById: Record<string, CanonicalTransaction>;
+  }> {
     await this.delay();
 
     const brk = this.state.breaks.find(
@@ -253,7 +258,19 @@ export class MockApiClient implements ApiClient {
       brk.txnIds.some((tid) => s.txnIds.includes(tid))
     );
 
-    return deepClone({ case: c, brk, suggestions });
+    // Collect all referenced transaction ids: break's txnIds + every suggestion's txnIds
+    const allTxnIds = new Set<string>([
+      ...brk.txnIds,
+      ...suggestions.flatMap((s) => s.txnIds),
+    ]);
+    const transactionsById: Record<string, CanonicalTransaction> = {};
+    for (const txn of this.state.transactions) {
+      if (allTxnIds.has(txn.id)) {
+        transactionsById[txn.id] = txn;
+      }
+    }
+
+    return deepClone({ case: c, brk, suggestions, transactionsById });
   }
 
   // -------------------------------------------------------------------------
@@ -351,7 +368,28 @@ export class MockApiClient implements ApiClient {
     // Determine status transition for approval-related events
     let updatedCase: Case;
 
-    if (event.kind === "approval_requested") {
+    if (event.kind === "assignment") {
+      const { assigneeId } = event.payload as { assigneeId: string };
+      // Update the case
+      updatedCase = {
+        ...c,
+        assigneeId,
+        status: c.status === "open" ? "investigating" : c.status,
+        events: [...c.events, newEvent],
+      };
+      // Also update the linked break
+      const brkIdx = this.state.breaks.findIndex(
+        (b) => b.caseId === caseId && b.tenantId === tenantId
+      );
+      if (brkIdx !== -1) {
+        const linkedBrk = this.state.breaks[brkIdx];
+        this.state.breaks[brkIdx] = {
+          ...linkedBrk,
+          assigneeId,
+          status: linkedBrk.status === "open" ? "investigating" : linkedBrk.status,
+        };
+      }
+    } else if (event.kind === "approval_requested") {
       // Find the actor user record for requestApproval
       const user = this.state.users.find((u) => u.id === event.actorId);
       if (!user) throw new Error(`User "${event.actorId}" not found.`);

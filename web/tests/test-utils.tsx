@@ -14,6 +14,8 @@ export { default as userEvent } from "@testing-library/user-event";
 export interface RenderOptions {
   /** Pre-seed localStorage with a specific tenantId before rendering. */
   tenantId?: string;
+  /** Pre-seed localStorage with a specific currentUserId before rendering. */
+  currentUserId?: string;
   /** Pre-seed URL search params for nuqs filters (e.g. "?type=duplicate" or { type: "duplicate" }). */
   searchParams?: string | Record<string, string>;
 }
@@ -40,6 +42,11 @@ export function renderWithProviders(
   // Pre-seed the tenant if caller requests a specific one.
   if (options.tenantId) {
     window.localStorage.setItem("recon:activeTenantId", options.tenantId);
+  }
+
+  // Pre-seed the current user if caller requests a specific one.
+  if (options.currentUserId) {
+    window.localStorage.setItem("recon:currentUserId", options.currentUserId);
   }
 
   // Normalise searchParams: NuqsTestingAdapter accepts Record<string, string>.
