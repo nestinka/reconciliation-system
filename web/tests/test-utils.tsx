@@ -14,6 +14,8 @@ export { default as userEvent } from "@testing-library/user-event";
 export interface RenderOptions {
   /** Pre-seed localStorage with a specific tenantId before rendering. */
   tenantId?: string;
+  /** Pre-seed URL search params for nuqs filters (e.g. "?type=duplicate" or { type: "duplicate" }). */
+  searchParams?: string | Record<string, string>;
 }
 
 export function makeQueryClient(): QueryClient {
@@ -40,6 +42,17 @@ export function renderWithProviders(
     window.localStorage.setItem("recon:activeTenantId", options.tenantId);
   }
 
+  // Normalise searchParams: NuqsTestingAdapter accepts Record<string, string>.
+  let nuqsSearchParams: Record<string, string> | undefined;
+  if (options.searchParams) {
+    if (typeof options.searchParams === "string") {
+      const sp = new URLSearchParams(options.searchParams.replace(/^\?/, ""));
+      nuqsSearchParams = Object.fromEntries(sp.entries());
+    } else {
+      nuqsSearchParams = options.searchParams;
+    }
+  }
+
   // Wrap providers: QueryClient > ApiProvider > TenantProvider > CurrentUserProvider > ThemeProvider > NuqsTestingAdapter
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
@@ -48,7 +61,7 @@ export function renderWithProviders(
           <TenantProvider>
             <CurrentUserProvider>
               <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-                <NuqsTestingAdapter>
+                <NuqsTestingAdapter searchParams={nuqsSearchParams}>
                   {children}
                 </NuqsTestingAdapter>
               </ThemeProvider>
