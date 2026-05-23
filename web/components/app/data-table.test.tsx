@@ -77,17 +77,40 @@ describe("DataTable", () => {
 
   it("clicking a sortable header three times resets sort to original order", async () => {
     const user = userEvent.setup();
-    render(<DataTable columns={COLUMNS} rows={ROWS} getRowId={getRowId} />);
+    // Deliberately NOT alphabetical so "reset" is distinguishable from "ascending".
+    const unsorted: Row[] = [
+      { id: "r1", name: "Gamma", amount: 200 },
+      { id: "r2", name: "Alpha", amount: 300 },
+      { id: "r3", name: "Beta", amount: 100 },
+    ];
+    render(<DataTable columns={COLUMNS} rows={unsorted} getRowId={getRowId} />);
 
-    await user.click(screen.getByText("Name"));
-    await user.click(screen.getByText("Name"));
+    await user.click(screen.getByText("Name")); // asc
+    await user.click(screen.getByText("Name")); // desc
     await user.click(screen.getByText("Name")); // reset
 
-    // Should be back to original order: Alpha, Beta, Gamma
+    // Back to the prop order, NOT ascending (which would be Alpha, Beta, Gamma).
     const rows = screen.getAllByRole("row").slice(1); // skip header
-    expect(rows[0]).toHaveTextContent("Alpha");
-    expect(rows[1]).toHaveTextContent("Beta");
-    expect(rows[2]).toHaveTextContent("Gamma");
+    expect(rows[0]).toHaveTextContent("Gamma");
+    expect(rows[1]).toHaveTextContent("Alpha");
+    expect(rows[2]).toHaveTextContent("Beta");
+  });
+
+  it("sortable headers are operable by keyboard", async () => {
+    const user = userEvent.setup();
+    render(<DataTable columns={COLUMNS} rows={ROWS} getRowId={getRowId} />);
+
+    // Sortable headers expose a real <button> for keyboard operability.
+    const amountButton = screen.getByRole("button", { name: /Amount/ });
+    amountButton.focus();
+    expect(amountButton).toHaveFocus();
+    await user.keyboard("{Enter}"); // ascending
+
+    const cells = screen
+      .getAllByRole("cell")
+      .filter((c) => ["100", "200", "300"].includes(c.textContent ?? ""));
+    expect(cells[0].textContent).toBe("100");
+    expect(cells[2].textContent).toBe("300");
   });
 
   it("isLoading shows skeletons, not row data", () => {
@@ -133,9 +156,7 @@ describe("DataTable", () => {
         />
       );
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      // First checkbox is header, rest are row checkboxes
-      await user.click(checkboxes[1]); // r1
+      await user.click(screen.getByRole("checkbox", { name: "Select row r1" }));
 
       expect(onChange).toHaveBeenCalledWith(["r1"]);
     });
@@ -154,8 +175,7 @@ describe("DataTable", () => {
         />
       );
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      await user.click(checkboxes[0]); // header checkbox
+      await user.click(screen.getByRole("checkbox", { name: "Select all rows" }));
 
       expect(onChange).toHaveBeenCalledWith(expect.arrayContaining(["r1", "r2", "r3"]));
       expect(onChange.mock.calls[0][0]).toHaveLength(3);
@@ -175,8 +195,7 @@ describe("DataTable", () => {
         />
       );
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      await user.click(checkboxes[0]); // header checkbox
+      await user.click(screen.getByRole("checkbox", { name: "Select all rows" }));
 
       expect(onChange).toHaveBeenCalledWith([]);
     });
@@ -193,7 +212,7 @@ describe("DataTable", () => {
         />
       );
 
-      const header = screen.getAllByRole("checkbox")[0];
+      const header = screen.getByRole("checkbox", { name: "Select all rows" });
       expect(header).toHaveAttribute("aria-checked", "mixed");
     });
 
@@ -213,8 +232,7 @@ describe("DataTable", () => {
         />
       );
 
-      const checkboxes = screen.getAllByRole("checkbox");
-      await user.click(checkboxes[1]); // r1 row checkbox
+      await user.click(screen.getByRole("checkbox", { name: "Select row r1" }));
 
       expect(onChange).toHaveBeenCalledWith(["r1"]);
       expect(onRowClick).not.toHaveBeenCalled();

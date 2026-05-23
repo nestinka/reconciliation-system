@@ -27,13 +27,9 @@ const DELTA_ICONS: Record<Delta["direction"], typeof TrendingUp> = {
   flat: Minus,
 };
 
-const DELTA_LABELS: Record<Delta["direction"], string> = {
-  up: "up",
-  down: "down",
-  flat: "flat",
-};
-
 export function KpiCard({ label, value, hint, delta }: KpiCardProps) {
+  const DeltaIcon = delta ? DELTA_ICONS[delta.direction] : null;
+
   return (
     <Card size="sm">
       <CardContent className="flex flex-col gap-1 px-3 py-2">
@@ -45,17 +41,19 @@ export function KpiCard({ label, value, hint, delta }: KpiCardProps) {
         </span>
         {(hint || delta) && (
           <div className="flex items-center gap-2 mt-0.5">
-            {delta && (() => {
-              const DeltaIcon = DELTA_ICONS[delta.direction];
-              const colorClass = DELTA_CLASSES[delta.direction];
-              return (
-                <span className={cn("inline-flex items-center gap-0.5 text-xs font-medium", colorClass)}>
-                  <DeltaIcon aria-hidden className="size-3 shrink-0" />
-                  <span>{delta.value}</span>
-                  <span className="sr-only">({DELTA_LABELS[delta.direction]})</span>
-                </span>
-              );
-            })()}
+            {delta && DeltaIcon && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-0.5 text-xs font-medium",
+                  DELTA_CLASSES[delta.direction]
+                )}
+              >
+                <DeltaIcon aria-hidden className="size-3 shrink-0" />
+                <span>{delta.value}</span>
+                {/* Direction conveyed in text, not by colour alone. */}
+                <span className="sr-only">({delta.direction})</span>
+              </span>
+            )}
             {hint && (
               <span className="text-xs text-muted-foreground">{hint}</span>
             )}

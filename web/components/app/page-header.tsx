@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   title: string;
@@ -9,7 +8,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, children }: PageHeaderProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-4 pb-4 mb-4 border-b border-border")}>
+    <div className="flex items-start justify-between gap-4 pb-4 mb-4 border-b border-border">
       <div className="flex flex-col gap-0.5">
         <h1 className="text-lg font-semibold leading-tight">{title}</h1>
         {description && (

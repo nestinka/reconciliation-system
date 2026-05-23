@@ -160,6 +160,9 @@
   html {
     @apply font-sans;
   }
+}
+
+@layer utilities {
   .nums {
     font-variant-numeric: tabular-nums;
   }

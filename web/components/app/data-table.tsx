@@ -37,6 +37,8 @@ export interface DataTableProps<T> {
   selectable?: boolean;
   selectedIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
+  /** Accessible label for a row's selection checkbox. Defaults to the row id. */
+  getRowLabel?: (row: T) => string;
 }
 
 type SortDirection = "asc" | "desc" | null;
@@ -63,6 +65,7 @@ export function DataTable<T>({
   selectable = false,
   selectedIds = [],
   onSelectionChange,
+  getRowLabel,
 }: DataTableProps<T>): React.JSX.Element {
   const [sort, setSort] = React.useState<SortState>({ columnId: null, direction: null });
 
@@ -122,6 +125,8 @@ export function DataTable<T>({
 
   return (
     <Table>
+      {/* Sticky header relies on the table's scroll container; verify in-browser
+          when the table lives inside an overflow context (see Table wrapper). */}
       <TableHeader className="sticky top-0 z-10 bg-card">
         <TableRow>
           {selectable && (
@@ -139,12 +144,7 @@ export function DataTable<T>({
             return (
               <TableHead
                 key={col.id}
-                className={cn(
-                  alignClass(col.align),
-                  col.headerClassName,
-                  col.sortable && "cursor-pointer select-none hover:text-foreground"
-                )}
-                onClick={() => handleHeaderClick(col)}
+                className={cn(alignClass(col.align), col.headerClassName)}
                 aria-sort={
                   col.sortable
                     ? isActive && sort.direction === "asc"
@@ -155,9 +155,18 @@ export function DataTable<T>({
                     : undefined
                 }
               >
-                <span className="inline-flex items-center gap-1">
-                  {col.header}
-                  {col.sortable && (
+                {col.sortable ? (
+                  // A real <button> inside the columnheader gives native
+                  // keyboard operability while aria-sort stays on the <th>.
+                  <button
+                    type="button"
+                    onClick={() => handleHeaderClick(col)}
+                    className={cn(
+                      "inline-flex items-center gap-1 select-none hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
+                      col.align === "right" && "flex-row-reverse"
+                    )}
+                  >
+                    {col.header}
                     <span aria-hidden className="inline-flex text-muted-foreground">
                       {isActive && sort.direction === "asc" ? (
                         <ChevronUp className="size-3" />
@@ -167,8 +176,12 @@ export function DataTable<T>({
                         <ChevronUp className="size-3 opacity-30" />
                       )}
                     </span>
-                  )}
-                </span>
+                  </button>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    {col.header}
+                  </span>
+                )}
               </TableHead>
             );
           })}
@@ -229,7 +242,7 @@ export function DataTable<T>({
                     <Checkbox
                       checked={isSelected}
                       onCheckedChange={() => handleRowCheckbox(id)}
-                      aria-label={`Select row ${id}`}
+                      aria-label={`Select ${getRowLabel ? getRowLabel(row) : `row ${id}`}`}
                     />
                   </TableCell>
                 )}
