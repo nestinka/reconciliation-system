@@ -13,8 +13,8 @@ import {
 
 import { PageHeader } from "@/components/app/page-header";
 import { KpiCard } from "@/components/app/kpi-card";
-import { StatusPill } from "@/components/app/status-pill";
-import { DataTable, type Column } from "@/components/app/data-table";
+import { DataTable } from "@/components/app/data-table";
+import { buildRunColumns } from "@/components/app/run-columns";
 import {
   Card,
   CardContent,
@@ -25,7 +25,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { formatMoney } from "@/lib/domain/money";
-import type { ReconciliationRun, BreakType, AgeingBucket } from "@/lib/domain/types";
+import type { BreakType, AgeingBucket } from "@/lib/domain/types";
 
 // -----------------------------------------------------------------------
 // Chart colours (maps to CSS vars set in globals.css)
@@ -52,81 +52,6 @@ const AGEING_URGENCY: Record<AgeingBucket, { label: string; barClass: string }> 
 };
 
 // -----------------------------------------------------------------------
-// Recent-runs table columns
-// -----------------------------------------------------------------------
-function useRunColumns(
-  currency: string
-): Column<ReconciliationRun>[] {
-  return [
-    {
-      id: "name",
-      header: "Name",
-      cell: (r) => (
-        <span className="font-medium text-foreground truncate max-w-48 block">
-          {r.name}
-        </span>
-      ),
-      sortable: true,
-      sortValue: (r) => r.name,
-    },
-    {
-      id: "status",
-      header: "Status",
-      cell: (r) => <StatusPill status={r.status} />,
-    },
-    {
-      id: "matchRate",
-      header: "Match rate",
-      align: "right",
-      cell: (r) => (
-        <span className="nums">{r.stats.matchRatePct.toFixed(1)}%</span>
-      ),
-      sortable: true,
-      sortValue: (r) => r.stats.matchRatePct,
-    },
-    {
-      id: "breaks",
-      header: "Breaks",
-      align: "right",
-      cell: (r) => <span className="nums">{r.stats.breakCount}</span>,
-      sortable: true,
-      sortValue: (r) => r.stats.breakCount,
-    },
-    {
-      id: "var",
-      header: "Value at risk",
-      align: "right",
-      cell: (r) => (
-        <span className="nums">
-          {formatMoney(r.stats.valueAtRiskMinor, currency)}
-        </span>
-      ),
-      sortable: true,
-      sortValue: (r) => r.stats.valueAtRiskMinor,
-    },
-    {
-      id: "completed",
-      header: "Completed",
-      align: "right",
-      cell: (r) =>
-        r.completedAt ? (
-          <span className="nums text-muted-foreground">
-            {new Date(r.completedAt).toLocaleDateString("en-GB", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })}
-          </span>
-        ) : (
-          <span className="text-muted-foreground/50">—</span>
-        ),
-      sortable: true,
-      sortValue: (r) => r.completedAt ?? "",
-    },
-  ];
-}
-
-// -----------------------------------------------------------------------
 // KPI skeleton row
 // -----------------------------------------------------------------------
 function KpiSkeletonRow() {
@@ -151,7 +76,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data, isLoading, isError, refetch } = useDashboard();
 
-  const runColumns = useRunColumns(data?.currency ?? "GBP");
+  const runColumns = buildRunColumns(data?.currency ?? "GBP");
+  const ageingMax = data
+    ? Math.max(...data.breaksByAgeing.map((b) => b.count), 1)
+    : 1;
 
   return (
     <div className="flex flex-col gap-6">
@@ -258,9 +186,9 @@ export default function DashboardPage() {
                         cursor={{ fill: "var(--color-muted)" }}
                       />
                       <Bar dataKey="count" radius={[3, 3, 0, 0]}>
-                        {data.breaksByType.map((_, idx) => (
+                        {data.breaksByType.map((d, idx) => (
                           <Cell
-                            key={idx}
+                            key={d.type}
                             fill={CHART_COLORS[idx % CHART_COLORS.length]}
                           />
                         ))}
@@ -283,11 +211,7 @@ export default function DashboardPage() {
                 >
                   {data.breaksByAgeing.map(({ bucket, count }) => {
                     const { label, barClass } = AGEING_URGENCY[bucket];
-                    const maxCount = Math.max(
-                      ...data.breaksByAgeing.map((b) => b.count),
-                      1
-                    );
-                    const pct = Math.round((count / maxCount) * 100);
+                    const pct = Math.round((count / ageingMax) * 100);
                     return (
                       <li key={bucket} className="flex flex-col gap-0.5">
                         <div className="flex items-center justify-between text-xs">
@@ -325,7 +249,6 @@ export default function DashboardPage() {
                   columns={runColumns}
                   rows={data.recentRuns}
                   getRowId={(r) => r.id}
-                  isLoading={false}
                   skeletonRows={5}
                   onRowClick={(r) => router.push(`/runs/${r.id}`)}
                   emptyState={

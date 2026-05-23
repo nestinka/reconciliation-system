@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { renderWithProviders, screen, waitFor } from "./test-utils";
+import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import DashboardPage from "@/app/(app)/dashboard/page";
 
 // next/navigation useRouter is not available in jsdom — mock it.
@@ -122,5 +122,34 @@ describe("DashboardPage", () => {
         screen.getByRole("heading", { name: /recent runs/i })
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows skeletons while loading (before data resolves)", () => {
+    renderWithProviders(<DashboardPage />, { tenantId: "tenant-acme" });
+    // The 0-latency mock resolves on a microtask, so the synchronous first
+    // render is the loading state.
+    expect(document.querySelector("[data-slot='skeleton']")).toBeTruthy();
+    expect(screen.queryByText("Open breaks")).not.toBeInTheDocument();
+  });
+
+  it("formats the value-at-risk KPI as currency (not raw minor units)", async () => {
+    renderWithProviders(<DashboardPage />, { tenantId: "tenant-acme" });
+    await waitFor(() => {
+      expect(screen.getByText("sum across open breaks")).toBeInTheDocument();
+    });
+    // A formatMoney result like "£12,345.67" must appear; raw minor units would
+    // have no currency symbol or decimal point.
+    expect(screen.getAllByText(/£[\d,]+\.\d{2}/).length).toBeGreaterThan(0);
+  });
+
+  it("navigates to the run detail when a recent-run row is clicked", async () => {
+    mockPush.mockClear();
+    renderWithProviders(<DashboardPage />, { tenantId: "tenant-acme" });
+    await waitFor(() => {
+      expect(screen.getByText("Daily Bank-GL 2026-05-15")).toBeInTheDocument();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByText("Daily Bank-GL 2026-05-15"));
+    expect(mockPush).toHaveBeenCalledWith(expect.stringMatching(/^\/runs\//));
   });
 });
