@@ -1,4 +1,4 @@
-import type { Break, Case } from "@/lib/domain/types";
+import type { Break, Case, CaseEvent, CanonicalTransaction } from "@/lib/domain/types";
 import { approve, reject, requestApproval } from "@/lib/case/approval";
 import type {
   ApiClient,
@@ -182,7 +182,7 @@ export class MockApiClient implements ApiClient {
       ...unmatched.flatMap((b) => b.txnIds),
     ]);
 
-    const transactionsById: Record<string, import("@/lib/domain/types").CanonicalTransaction> = {};
+    const transactionsById: Record<string, CanonicalTransaction> = {};
     for (const txn of this.state.transactions) {
       if (allTxnIds.has(txn.id)) {
         transactionsById[txn.id] = txn;
@@ -279,7 +279,9 @@ export class MockApiClient implements ApiClient {
     const brk = this.state.breaks[brkIdx];
     const caseIdx = this.state.cases.findIndex((c) => c.id === brk.caseId);
 
-    // Update break
+    // Update break. Only an "open" break advances to "investigating" on
+    // assignment; already-progressed breaks (investigating/pending_approval/
+    // resolved/written_off) keep their status and just gain an assignee.
     const newStatus =
       brk.status === "open" ? "investigating" : brk.status;
     this.state.breaks[brkIdx] = {
@@ -336,11 +338,15 @@ export class MockApiClient implements ApiClient {
 
     const c = this.state.cases[caseIdx];
 
+    // Re-assembling a discriminated union after an object spread requires a
+    // cast: TS cannot correlate the spread `kind` with its `payload` member.
+    // Safe here because `event` is already a valid NewCaseEvent and we only add
+    // server-assigned `id`/`at`.
     const newEvent = {
       ...event,
       id: nextId(),
       at: new Date().toISOString(),
-    } as import("@/lib/domain/types").CaseEvent;
+    } as CaseEvent;
 
     // Determine status transition for approval-related events
     let updatedCase: Case;

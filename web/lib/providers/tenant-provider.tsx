@@ -1,11 +1,7 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
+import { usePersistedState } from "@/lib/hooks/use-persisted-state";
 
 const STORAGE_KEY = "recon:activeTenantId";
 const DEFAULT_TENANT = "tenant-acme";
@@ -18,19 +14,7 @@ interface TenantContextValue {
 const TenantContext = createContext<TenantContextValue | null>(null);
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const [tenantId, setTenantIdState] = useState<string>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(STORAGE_KEY) ?? DEFAULT_TENANT;
-    }
-    return DEFAULT_TENANT;
-  });
-
-  function setTenantId(id: string) {
-    setTenantIdState(id);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, id);
-    }
-  }
+  const [tenantId, setTenantId] = usePersistedState(STORAGE_KEY, DEFAULT_TENANT);
 
   return (
     <TenantContext.Provider value={{ tenantId, setTenantId }}>
