@@ -162,10 +162,10 @@ test.describe("Operator loop – four-eyes approval flow", () => {
     await page.getByRole("button", { name: /approve/i }).click();
 
     // Step 7: Case resolves
-    // The "Pending four-eyes approval" section should disappear
+    // The "Pending four-eyes approval" section should be unmounted entirely
     await expect(
       page.getByRole("region", { name: /four-eyes approval/i })
-    ).not.toBeVisible();
+    ).not.toBeAttached();
 
     // Status pill shows "Resolved"
     await expect(page.getByText("Resolved")).toBeVisible();
@@ -214,10 +214,10 @@ test.describe("Operator loop – four-eyes approval flow", () => {
     ).toBeEnabled();
     await page.getByRole("button", { name: /approve/i }).click();
 
-    // 7. Case resolves — approval bar gone, resolved status visible
+    // 7. Case resolves — approval bar unmounted, resolved status visible
     await expect(
       page.getByRole("region", { name: /four-eyes approval/i })
-    ).not.toBeVisible();
+    ).not.toBeAttached();
     await expect(page.getByText("Resolved")).toBeVisible();
   });
 });
