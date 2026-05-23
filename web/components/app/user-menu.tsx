@@ -23,12 +23,14 @@ const ROLE_LABELS: Record<User["role"], string> = {
 };
 
 function initials(name: string): string {
-  return name
-    .split(" ")
-    .map((s) => s[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  return (
+    name
+      .split(" ")
+      .map((s) => s[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2) || "?"
+  );
 }
 
 export function UserMenu() {

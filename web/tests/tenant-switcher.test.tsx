@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, renderWithProviders } from "./test-utils";
+import { screen, waitFor, userEvent, renderWithProviders } from "./test-utils";
 import { TenantSwitcher } from "@/components/app/tenant-switcher";
 import { useTenant } from "@/lib/providers/tenant-provider";
 
@@ -31,10 +31,11 @@ describe("TenantSwitcher", () => {
 
   it("is disabled while loading", () => {
     renderWithProviders(<TenantSwitcher />);
-    // On first render before data loads the button is disabled
-    const trigger = screen.getByRole("button", { name: /switch tenant/i });
-    // The button should be present
-    expect(trigger).toBeInTheDocument();
+    // On first synchronous render (before the 0-latency query resolves) the
+    // trigger is disabled so the menu can't be opened with no data.
+    expect(
+      screen.getByRole("button", { name: /switch tenant/i })
+    ).toBeDisabled();
   });
 
   it("becomes enabled once tenants load", async () => {
@@ -73,8 +74,8 @@ describe("TenantSwitcher", () => {
     });
 
     // Switch tenant via the test helper
-    const switchBtn = screen.getByRole("button", { name: /switch to globex/i });
-    switchBtn.click();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /switch to globex/i }));
 
     // Now the trigger should show Globex
     await waitFor(() => {

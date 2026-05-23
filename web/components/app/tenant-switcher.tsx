@@ -4,7 +4,8 @@ import { Building2, ChevronsUpDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuCheckboxItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useTenant } from "@/lib/providers/tenant-provider";
@@ -30,15 +31,13 @@ export function TenantSwitcher() {
         <ChevronsUpDown aria-hidden className="size-3 shrink-0 text-muted-foreground ml-1" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-52">
-        {tenants?.map((t) => (
-          <DropdownMenuCheckboxItem
-            key={t.id}
-            checked={t.id === tenantId}
-            onCheckedChange={() => setTenantId(t.id)}
-          >
-            {t.name}
-          </DropdownMenuCheckboxItem>
-        ))}
+        <DropdownMenuRadioGroup value={tenantId} onValueChange={setTenantId}>
+          {tenants?.map((t) => (
+            <DropdownMenuRadioItem key={t.id} value={t.id}>
+              {t.name}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

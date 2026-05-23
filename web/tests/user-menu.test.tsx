@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, renderWithProviders } from "./test-utils";
+import { screen, waitFor, userEvent, renderWithProviders } from "./test-utils";
 import { UserMenu } from "@/components/app/user-menu";
 import { useCurrentUserId } from "@/lib/providers/current-user-provider";
 
@@ -64,7 +64,8 @@ describe("UserMenu", () => {
     });
 
     // Switch user via the test helper
-    screen.getByRole("button", { name: /switch to sam/i }).click();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /switch to sam/i }));
 
     // Now the trigger should show Sam
     await waitFor(() => {
