@@ -39,4 +39,16 @@ describe("four-eyes", () => {
     expect(next.status).toBe("investigating");
     expect(next.events.at(-1)?.kind).toBe("rejected");
   });
+  it("fails closed when a pending case has no approval_requested event", () => {
+    const orphan: Case = { id: "c1", breakId: "b1", status: "pending_approval", events: [] };
+    expect(canApprove(orphan, checker).allowed).toBe(false);
+  });
+  it("approve throws when the case is not pending approval", () => {
+    const open: Case = { id: "c1", breakId: "b1", status: "investigating", events: [] };
+    expect(() => approve(open, checker)).toThrow();
+  });
+  it("reject throws when the case is not pending approval", () => {
+    const open: Case = { id: "c1", breakId: "b1", status: "investigating", events: [] };
+    expect(() => reject(open, checker, "n/a")).toThrow();
+  });
 });

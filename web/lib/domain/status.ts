@@ -8,7 +8,6 @@ import {
   CircleMinus,
   Loader,
   CircleCheckBig,
-  Info,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -95,7 +94,7 @@ const STATUS_MAP: Record<StatusKind, StatusMeta> = {
   failed: {
     tone: "danger",
     label: "Failed",
-    icon: Info,
+    icon: CircleX,
   },
 };
 

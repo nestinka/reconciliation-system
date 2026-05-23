@@ -1,5 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { statusMeta } from "./status";
+import { statusMeta, type StatusKind } from "./status";
+
+const ALL_STATUSES: StatusKind[] = [
+  "matched",
+  "partial",
+  "unmatched",
+  "break",
+  "duplicate",
+  "open",
+  "investigating",
+  "pending_approval",
+  "resolved",
+  "written_off",
+  "running",
+  "completed",
+  "failed",
+];
 
 describe("statusMeta", () => {
   it("maps matched to success with a label and icon", () => {
@@ -11,9 +27,14 @@ describe("statusMeta", () => {
   it("maps break to danger", () => {
     expect(statusMeta("break").tone).toBe("danger");
   });
-  it("never relies on color alone (always has a label)", () => {
-    for (const s of ["matched","partial","unmatched","break","pending_approval","resolved","written_off"] as const) {
+  it("never relies on color alone (every status has a label)", () => {
+    for (const s of ALL_STATUSES) {
       expect(statusMeta(s).label.length).toBeGreaterThan(0);
+    }
+  });
+  it("provides an icon for every status", () => {
+    for (const s of ALL_STATUSES) {
+      expect(statusMeta(s).icon).toBeTruthy();
     }
   });
 });

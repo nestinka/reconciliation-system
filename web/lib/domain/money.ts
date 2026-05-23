@@ -6,6 +6,8 @@
  */
 export function formatMoney(amountMinor: number, currency: string): string {
   // Resolve how many fractional digits the currency uses (JPY=0, most others=2)
+  // `maximumFractionDigits` is always present at runtime for currency styles,
+  // but TypeScript types it as optional, so we keep a safe default of 2.
   const decimals =
     new Intl.NumberFormat("en-US", {
       style: "currency",

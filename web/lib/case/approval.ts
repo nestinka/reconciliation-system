@@ -24,7 +24,13 @@ export function canApprove(c: Case, user: User): CanApproveResult {
     .reverse()
     .find((e) => e.kind === "approval_requested");
 
-  if (lastRequest && lastRequest.actorId === user.id) {
+  // A pending case must have an approval request; absence is a data-integrity
+  // violation, so fail closed rather than silently bypassing four-eyes.
+  if (!lastRequest) {
+    return { allowed: false, reason: "No approval request found in case history." };
+  }
+
+  if (lastRequest.actorId === user.id) {
     return { allowed: false, reason: "Maker cannot approve their own proposal (four-eyes principle)." };
   }
 
@@ -52,6 +58,11 @@ export function requestApproval(
 }
 
 export function approve(c: Case, checker: User): Case {
+  if (c.status !== "pending_approval") {
+    throw new Error(
+      `Cannot approve: case status is "${c.status}", expected "pending_approval".`
+    );
+  }
   const event = {
     id: crypto.randomUUID(),
     kind: "approved" as const,
@@ -68,6 +79,11 @@ export function approve(c: Case, checker: User): Case {
 }
 
 export function reject(c: Case, checker: User, reason: string): Case {
+  if (c.status !== "pending_approval") {
+    throw new Error(
+      `Cannot reject: case status is "${c.status}", expected "pending_approval".`
+    );
+  }
   const event = {
     id: crypto.randomUUID(),
     kind: "rejected" as const,
