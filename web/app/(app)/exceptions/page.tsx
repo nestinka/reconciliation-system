@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/app/page-header";
 import { DataTable } from "@/components/app/data-table";
 import { buildBreakColumns } from "@/components/app/break-columns";
 import { EmptyState } from "@/components/app/empty-state";
+import { FilterSelect } from "@/components/app/filter-select";
 import {
   Select,
   SelectContent,
@@ -102,9 +103,16 @@ function ExceptionsPageInner() {
     [usersById]
   );
 
-  // Selection state
+  // Selection state. `effectiveSelectedIds` intersects the raw selection with
+  // the currently visible rows so that changing a filter can never leave a
+  // selected-but-hidden break that bulk-assign would silently target.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pendingUserId, setPendingUserId] = useState<string>("");
+
+  const effectiveSelectedIds = useMemo(() => {
+    const visible = new Set(filteredBreaks.map((b) => b.id));
+    return selectedIds.filter((id) => visible.has(id));
+  }, [selectedIds, filteredBreaks]);
 
   // Assignee options for filter and toolbar
   const assigneeFilterOptions = useMemo(
@@ -117,19 +125,30 @@ function ExceptionsPageInner() {
   );
 
   async function handleBulkAssign() {
-    if (!pendingUserId || selectedIds.length === 0) return;
-    try {
-      await Promise.all(
-        selectedIds.map((breakId) =>
-          assignMutation.mutateAsync({ breakId, userId: pendingUserId })
-        )
-      );
-      const userName = usersById[pendingUserId]?.name ?? pendingUserId;
-      toast.success(`Assigned ${selectedIds.length} break(s) to ${userName}`);
-      setSelectedIds([]);
+    const ids = effectiveSelectedIds;
+    if (!pendingUserId || ids.length === 0) return;
+    const userName = usersById[pendingUserId]?.name ?? pendingUserId;
+
+    // allSettled so a single failure doesn't leave succeeded assignments
+    // stranded in the selection or hide partial success from the user.
+    const results = await Promise.allSettled(
+      ids.map((breakId) =>
+        assignMutation.mutateAsync({ breakId, userId: pendingUserId })
+      )
+    );
+    const succeededIds = ids.filter((_, i) => results[i].status === "fulfilled");
+    const failedCount = results.length - succeededIds.length;
+
+    // Drop only the successfully-assigned ids; keep failures selected for retry.
+    setSelectedIds((prev) => prev.filter((id) => !succeededIds.includes(id)));
+
+    if (succeededIds.length > 0) {
+      toast.success(`Assigned ${succeededIds.length} break(s) to ${userName}`);
+    }
+    if (failedCount > 0) {
+      toast.error(`${failedCount} break(s) could not be assigned. Please retry.`);
+    } else {
       setPendingUserId("");
-    } catch {
-      toast.error("Failed to assign some breaks. Please try again.");
     }
   }
 
@@ -142,69 +161,32 @@ function ExceptionsPageInner() {
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 flex-wrap">
-        <Select
+        <FilterSelect
           value={type ?? "all"}
-          onValueChange={(val) => setType(val === "all" ? null : val)}
-        >
-          <SelectTrigger className="w-40" aria-label="Filter by type">
-            <SelectValue placeholder="All types" />
-          </SelectTrigger>
-          <SelectContent>
-            {TYPE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
+          onChange={setType}
+          options={TYPE_OPTIONS}
+          label="Filter by type"
+        />
+        <FilterSelect
           value={status ?? "all"}
-          onValueChange={(val) => setStatus(val === "all" ? null : val)}
-        >
-          <SelectTrigger className="w-44" aria-label="Filter by status">
-            <SelectValue placeholder="All statuses" />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
+          onChange={setStatus}
+          options={STATUS_OPTIONS}
+          label="Filter by status"
+          className="w-44"
+        />
+        <FilterSelect
           value={ageing ?? "all"}
-          onValueChange={(val) => setAgeing(val === "all" ? null : val)}
-        >
-          <SelectTrigger className="w-40" aria-label="Filter by ageing">
-            <SelectValue placeholder="All ageing" />
-          </SelectTrigger>
-          <SelectContent>
-            {AGEING_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
+          onChange={setAgeing}
+          options={AGEING_OPTIONS}
+          label="Filter by ageing"
+        />
+        <FilterSelect
           value={assignee ?? "all"}
-          onValueChange={(val) => setAssignee(val === "all" ? null : val)}
-        >
-          <SelectTrigger className="w-44" aria-label="Filter by assignee">
-            <SelectValue placeholder="All assignees" />
-          </SelectTrigger>
-          <SelectContent>
-            {assigneeFilterOptions.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          onChange={setAssignee}
+          options={assigneeFilterOptions}
+          label="Filter by assignee"
+          className="w-44"
+        />
       </div>
 
       {/* Error state */}
@@ -221,10 +203,14 @@ function ExceptionsPageInner() {
       )}
 
       {/* Bulk-assign toolbar */}
-      {selectedIds.length > 0 && (
+      {effectiveSelectedIds.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 flex-wrap">
-          <span className="text-sm font-medium tabular-nums">
-            {selectedIds.length} selected
+          <span
+            className="text-sm font-medium tabular-nums"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {effectiveSelectedIds.length} selected
           </span>
           <div className="flex-1" />
           <Select
@@ -281,7 +267,7 @@ function ExceptionsPageInner() {
               isLoading={isLoading}
               skeletonRows={8}
               selectable
-              selectedIds={selectedIds}
+              selectedIds={effectiveSelectedIds}
               onSelectionChange={setSelectedIds}
               getRowLabel={(b) => `break ${b.id}`}
               onRowClick={(b) => router.push(`/cases/${b.caseId}`)}
