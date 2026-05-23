@@ -180,6 +180,45 @@ describe("DataTable", () => {
 
       expect(onChange).toHaveBeenCalledWith([]);
     });
+
+    it("header checkbox is indeterminate when only some rows are selected", () => {
+      render(
+        <DataTable
+          columns={COLUMNS}
+          rows={ROWS}
+          getRowId={getRowId}
+          selectable
+          selectedIds={["r1"]}
+          onSelectionChange={vi.fn()}
+        />
+      );
+
+      const header = screen.getAllByRole("checkbox")[0];
+      expect(header).toHaveAttribute("aria-checked", "mixed");
+    });
+
+    it("clicking a row checkbox does not trigger onRowClick (propagation stopped)", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      const onRowClick = vi.fn();
+      render(
+        <DataTable
+          columns={COLUMNS}
+          rows={ROWS}
+          getRowId={getRowId}
+          onRowClick={onRowClick}
+          selectable
+          selectedIds={[]}
+          onSelectionChange={onChange}
+        />
+      );
+
+      const checkboxes = screen.getAllByRole("checkbox");
+      await user.click(checkboxes[1]); // r1 row checkbox
+
+      expect(onChange).toHaveBeenCalledWith(["r1"]);
+      expect(onRowClick).not.toHaveBeenCalled();
+    });
   });
 
   describe("row click", () => {
