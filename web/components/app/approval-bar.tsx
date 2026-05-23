@@ -82,7 +82,7 @@ export function ApprovalBar({
         </span>
         {resolution && (
           <span className="ml-auto text-xs text-muted-foreground font-mono bg-muted/50 px-2 py-0.5 rounded">
-            {resolution.replace("_", " ")}
+            {resolution.replace(/_/g, " ")}
           </span>
         )}
       </div>
@@ -103,6 +103,9 @@ export function ApprovalBar({
             Approve
           </Button>
 
+          {/* Reject is gated on the same rule as Approve: only a valid checker
+              (approver/admin who is NOT the maker) may act on the proposal.
+              The maker can neither approve nor reject their own proposal. */}
           {!showRejectForm && (
             <Button
               size="sm"

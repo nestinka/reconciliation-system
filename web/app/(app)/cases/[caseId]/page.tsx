@@ -28,6 +28,8 @@ import { formatMoney } from "@/lib/domain/money";
 import { formatDate, formatDateTime } from "@/lib/domain/date";
 import type { User } from "@/lib/domain/types";
 
+type CaseDetail = NonNullable<ReturnType<typeof useCase>["data"]>;
+
 // ---------------------------------------------------------------------------
 // Loading skeleton
 // ---------------------------------------------------------------------------
@@ -124,14 +126,10 @@ function CaseDetailView({
   onBack,
   append,
 }: {
-  c: ReturnType<typeof useCase>["data"] extends undefined
-    ? never
-    : NonNullable<ReturnType<typeof useCase>["data"]>["case"];
-  brk: NonNullable<ReturnType<typeof useCase>["data"]>["brk"];
-  suggestions: NonNullable<ReturnType<typeof useCase>["data"]>["suggestions"];
-  transactionsById: NonNullable<
-    ReturnType<typeof useCase>["data"]
-  >["transactionsById"];
+  c: CaseDetail["case"];
+  brk: CaseDetail["brk"];
+  suggestions: CaseDetail["suggestions"];
+  transactionsById: CaseDetail["transactionsById"];
   usersById: Record<string, User>;
   currentUser: User | undefined;
   onBack: () => void;
@@ -140,8 +138,11 @@ function CaseDetailView({
   const [commentText, setCommentText] = useState("");
   const [writeOffReason, setWriteOffReason] = useState("");
   const [showWriteOffForm, setShowWriteOffForm] = useState(false);
+  // Guards an entire (possibly multi-step) action so buttons stay disabled
+  // across the whole handler, not just per individual mutation.
+  const [submitting, setSubmitting] = useState(false);
 
-  const isMutating = append.isPending;
+  const isMutating = append.isPending || submitting;
   const isResolved =
     c.status === "resolved" || c.status === "written_off";
   const isPendingApproval = c.status === "pending_approval";
@@ -199,6 +200,10 @@ function CaseDetailView({
   async function handleProposeWriteOff() {
     if (!currentUser || !writeOffReason.trim()) return;
     const reason = writeOffReason.trim();
+    // `submitting` keeps the proposal buttons disabled across BOTH mutations so
+    // the action bar can't flash re-enabled (and the proposal can't double-fire)
+    // between the write_off_proposed and approval_requested events.
+    setSubmitting(true);
     try {
       // First capture the reason in a write_off_proposed event
       await append.mutateAsync({
@@ -217,6 +222,8 @@ function CaseDetailView({
       toast.success("Write-off proposed — awaiting four-eyes approval");
     } catch {
       toast.error("Failed to propose write-off");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -252,6 +259,7 @@ function CaseDetailView({
   const breakTxns = brk.txnIds
     .map((id) => transactionsById[id])
     .filter(Boolean);
+  const lastEvent = c.events.at(-1);
 
   return (
     <div className="flex flex-col gap-6">
@@ -466,7 +474,7 @@ function CaseDetailView({
                   Assign to
                 </label>
                 <Select
-                  defaultValue={brk.assigneeId ?? ""}
+                  value={brk.assigneeId ?? ""}
                   onValueChange={(value) => { if (value) void handleAssign(value); }}
                   disabled={baseActionsDisabled}
                 >
@@ -613,10 +621,9 @@ function CaseDetailView({
       </section>
 
       {/* Last updated footer */}
-      {c.events.length > 0 && (
+      {lastEvent && (
         <p className="text-xs text-muted-foreground text-right">
-          Last updated:{" "}
-          {formatDateTime(c.events[c.events.length - 1].at)}
+          Last updated: {formatDateTime(lastEvent.at)}
         </p>
       )}
     </div>

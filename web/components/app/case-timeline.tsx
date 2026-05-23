@@ -8,6 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/domain/date";
 import type { CaseEvent, User } from "@/lib/domain/types";
 
@@ -57,7 +58,7 @@ const EVENT_META: Record<CaseEvent["kind"], EventMeta> = {
     iconClass: "text-warning",
     description: (e) =>
       e.kind === "approval_requested"
-        ? `Requested approval (${e.payload.resolution.replace("_", " ")})`
+        ? `Requested approval (${e.payload.resolution.replace(/_/g, " ")})`
         : "",
   },
   approved: {
@@ -113,7 +114,7 @@ export function CaseTimeline({ events, usersById }: CaseTimelineProps) {
               aria-hidden
               className="relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-card ring-1 ring-border"
             >
-              <Icon className={`size-3.5 ${iconClass}`} />
+              <Icon className={cn("size-3.5", iconClass)} />
             </span>
 
             {/* Content */}
