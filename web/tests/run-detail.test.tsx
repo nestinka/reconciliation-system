@@ -165,8 +165,8 @@ describe("RunDetailPage", () => {
   it("renders the config version after load", async () => {
     renderWithProviders(<RunDetailPage />, { tenantId: "tenant-acme" });
     await waitFor(() => {
-      // run-acme-001 configVersion: "v1.2"
-      expect(screen.getByText("v1.2")).toBeInTheDocument();
+      // run-acme-001 configVersion: "v1.2", rendered as "Config: v1.2"
+      expect(screen.getByText(/Config:\s*v1\.2/)).toBeInTheDocument();
     });
   });
 

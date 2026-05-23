@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 
@@ -8,6 +9,7 @@ import { KpiCard } from "@/components/app/kpi-card";
 import { StatusPill } from "@/components/app/status-pill";
 import { DataTable } from "@/components/app/data-table";
 import { EmptyState } from "@/components/app/empty-state";
+import { buildBreakColumns } from "@/components/app/break-columns";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,11 +18,7 @@ import { useRun } from "@/lib/hooks/use-runs";
 import { formatMoney } from "@/lib/domain/money";
 import { formatDate } from "@/lib/domain/date";
 import type { Column } from "@/components/app/data-table";
-import type {
-  MatchDecision,
-  Break,
-  CanonicalTransaction,
-} from "@/lib/domain/types";
+import type { MatchDecision, CanonicalTransaction } from "@/lib/domain/types";
 
 // ---------------------------------------------------------------------------
 // Helper: derive display currency from transactionsById
@@ -79,7 +77,7 @@ function buildDecisionColumns(
       align: "right",
       cell: (d) => {
         const score =
-          d.score <= 1
+          d.score >= 0 && d.score <= 1
             ? `${(d.score * 100).toFixed(0)}%`
             : String(d.score);
         return <span className="nums">{score}</span>;
@@ -91,62 +89,6 @@ function buildDecisionColumns(
       id: "type",
       header: "Type",
       cell: (d) => <StatusPill status={d.type} />,
-    },
-  ];
-}
-
-// ---------------------------------------------------------------------------
-// Break columns (Unmatched tab)
-// ---------------------------------------------------------------------------
-function buildBreakColumns(
-  transactionsById: Record<string, CanonicalTransaction>,
-  currency: string
-): Column<Break>[] {
-  return [
-    {
-      id: "reference",
-      header: "Reference",
-      cell: (b) => {
-        const ref =
-          (b.txnIds[0] && transactionsById[b.txnIds[0]]?.externalRef) ??
-          b.id;
-        return (
-          <span className="font-mono text-xs text-foreground truncate max-w-48 block">
-            {ref}
-          </span>
-        );
-      },
-    },
-    {
-      id: "type",
-      header: "Type",
-      cell: (b) => <StatusPill status={b.type} />,
-    },
-    {
-      id: "ageing",
-      header: "Ageing",
-      cell: (b) => (
-        <span className="text-sm text-muted-foreground">{b.ageingBucket}</span>
-      ),
-      sortable: true,
-      sortValue: (b) => b.ageingDays,
-    },
-    {
-      id: "value",
-      header: "Value",
-      align: "right",
-      cell: (b) => (
-        <span className="nums">
-          {formatMoney(b.valueMinor, b.currency ?? currency)}
-        </span>
-      ),
-      sortable: true,
-      sortValue: (b) => b.valueMinor,
-    },
-    {
-      id: "status",
-      header: "Status",
-      cell: (b) => <StatusPill status={b.status} />,
     },
   ];
 }
@@ -233,12 +175,33 @@ export default function RunDetailPage() {
     );
   }
 
+  return (
+    <RunDetailView
+      data={data}
+      onOpenCase={(caseId) => router.push(`/cases/${caseId}`)}
+    />
+  );
+}
+
+function RunDetailView({
+  data,
+  onOpenCase,
+}: {
+  data: NonNullable<ReturnType<typeof useRun>["data"]>;
+  onOpenCase: (caseId: string) => void;
+}) {
   const { run, transactionsById, matched, partial, duplicates, unmatched } =
     data;
 
   const currency = deriveCurrency(transactionsById);
-  const decisionColumns = buildDecisionColumns(transactionsById, currency);
-  const breakColumns = buildBreakColumns(transactionsById, currency);
+  const decisionColumns = useMemo(
+    () => buildDecisionColumns(transactionsById, currency),
+    [transactionsById, currency]
+  );
+  const breakColumns = useMemo(
+    () => buildBreakColumns({ transactionsById, currency }),
+    [transactionsById, currency]
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -246,12 +209,12 @@ export default function RunDetailPage() {
       <PageHeader title={run.name}>
         <StatusPill status={run.status} />
         <span className="text-xs text-muted-foreground font-mono">
-          {run.configVersion}
+          Config: {run.configVersion}
         </span>
       </PageHeader>
 
       {/* Timestamps row */}
-      <div className="flex items-center gap-4 -mt-4 text-xs text-muted-foreground">
+      <div className="flex items-center gap-4 -mt-2 text-xs text-muted-foreground">
         <span>
           Started:{" "}
           <span className="text-foreground font-medium">
@@ -309,14 +272,14 @@ export default function RunDetailPage() {
           <TabsTrigger value="matched">
             Matched ({matched.length})
           </TabsTrigger>
-          <TabsTrigger value="unmatched">
-            Unmatched ({unmatched.length})
-          </TabsTrigger>
           <TabsTrigger value="partial">
             Partial ({partial.length})
           </TabsTrigger>
           <TabsTrigger value="duplicates">
             Duplicates ({duplicates.length})
+          </TabsTrigger>
+          <TabsTrigger value="unmatched">
+            Unmatched ({unmatched.length})
           </TabsTrigger>
         </TabsList>
 
@@ -347,7 +310,7 @@ export default function RunDetailPage() {
                 columns={breakColumns}
                 rows={unmatched}
                 getRowId={(b) => b.id}
-                onRowClick={(b) => router.push(`/cases/${b.caseId}`)}
+                onRowClick={(b) => onOpenCase(b.caseId)}
                 emptyState={
                   <EmptyState
                     title="No unmatched breaks"

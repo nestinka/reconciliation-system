@@ -3,10 +3,10 @@ import { renderWithProviders, screen, waitFor, userEvent } from "./test-utils";
 import RunsPage from "@/app/(app)/runs/page";
 
 // next/navigation useRouter is not available in jsdom — mock it.
+// (nuqs uses NuqsTestingAdapter from test-utils, so useSearchParams is handled.)
 const mockPush = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
-  useSearchParams: () => new URLSearchParams(),
 }));
 
 describe("RunsPage (runs list)", () => {

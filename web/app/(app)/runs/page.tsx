@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { Search } from "lucide-react";
@@ -51,16 +51,16 @@ function RunsPageInner() {
     apiStatus ? { status: apiStatus } : undefined
   );
 
-  const runColumns = buildRunColumns("GBP");
+  const runColumns = useMemo(() => buildRunColumns("GBP"), []);
 
   // Client-side name filter (case-insensitive substring)
-  const filteredRuns = runs
-    ? q.trim()
-      ? runs.filter((r) =>
-          r.name.toLowerCase().includes(q.trim().toLowerCase())
-        )
-      : runs
-    : [];
+  const filteredRuns = useMemo(() => {
+    if (!runs) return [];
+    const needle = q.trim().toLowerCase();
+    return needle
+      ? runs.filter((r) => r.name.toLowerCase().includes(needle))
+      : runs;
+  }, [runs, q]);
 
   return (
     <div className="flex flex-col gap-4">
