@@ -84,9 +84,10 @@ web/
     app/                         # KpiCard, StatusPill, RunTable, BreakTable, CaseTimeline, ApprovalBar...
   lib/
     api/                         # client.ts (interface), mock.ts, fixtures.ts
-    domain/                      # types.ts (canonical model)
+    domain/                      # types.ts (canonical model), money.ts, date.ts, status.ts
+    case/                        # approval.ts — four-eyes (maker/checker) domain logic
     hooks/                       # useRuns, useRun, useBreaks, useCase, useTenants...
-    providers/                   # query-provider, theme-provider, tenant-provider
+    providers/                   # query-provider, theme-provider, tenant-provider, current-user
   styles/theme.css               # design tokens via @theme
   tests/                         # unit/component + e2e
 ```

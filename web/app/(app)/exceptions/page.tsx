@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBreaks, useAssignBreak } from "@/lib/hooks/use-breaks";
+import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { useUsers } from "@/lib/hooks/use-tenants";
 import type { BreakQuery } from "@/lib/api/client";
 import type { Break, BreakStatus, BreakType, AgeingBucket } from "@/lib/domain/types";
@@ -97,10 +98,15 @@ function ExceptionsPageInner() {
     return breaks;
   }, [breaks, assignee]);
 
+  // Each break carries its own currency; this is only the fallback for any that
+  // don't. Use the tenant's primary currency from the cached dashboard summary.
+  const { data: dashboard } = useDashboard();
+  const currency = dashboard?.currency ?? "GBP";
+
   // Build columns
   const columns = useMemo(
-    () => buildBreakColumns({ currency: "GBP", usersById }),
-    [usersById]
+    () => buildBreakColumns({ currency, usersById }),
+    [currency, usersById]
   );
 
   // Selection state. `effectiveSelectedIds` intersects the raw selection with

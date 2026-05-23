@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRuns } from "@/lib/hooks/use-runs";
+import { useDashboard } from "@/lib/hooks/use-dashboard";
 import type { RunStatus } from "@/lib/domain/types";
 
 // Status options for the filter Select
@@ -51,7 +52,11 @@ function RunsPageInner() {
     apiStatus ? { status: apiStatus } : undefined
   );
 
-  const runColumns = useMemo(() => buildRunColumns("GBP"), []);
+  // ReconciliationRun carries no currency, so use the tenant's primary currency
+  // from the (cached, tenant-scoped) dashboard summary; "GBP" is only a fallback.
+  const { data: dashboard } = useDashboard();
+  const currency = dashboard?.currency ?? "GBP";
+  const runColumns = useMemo(() => buildRunColumns(currency), [currency]);
 
   // Client-side name filter (case-insensitive substring)
   const filteredRuns = useMemo(() => {

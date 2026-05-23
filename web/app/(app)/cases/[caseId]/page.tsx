@@ -185,7 +185,16 @@ function CaseDetailView({
 
   async function handleProposeManualMatch() {
     if (!currentUser) return;
+    // Two-step like write-off: record WHAT was proposed (the break's txns) as a
+    // manual_match_proposed event, then request four-eyes approval. `submitting`
+    // keeps the proposal buttons disabled across both mutations.
+    setSubmitting(true);
     try {
+      await append.mutateAsync({
+        kind: "manual_match_proposed",
+        actorId: currentUser.id,
+        payload: { txnIds: brk.txnIds },
+      });
       await append.mutateAsync({
         kind: "approval_requested",
         actorId: currentUser.id,
@@ -194,6 +203,8 @@ function CaseDetailView({
       toast.success("Proposed — awaiting four-eyes approval");
     } catch {
       toast.error("Failed to propose manual match");
+    } finally {
+      setSubmitting(false);
     }
   }
 
