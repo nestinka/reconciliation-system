@@ -14,6 +14,8 @@ import {
   loginRequest,
   refreshRequest,
   logoutRequest,
+  switchTenantRequest,
+  changePasswordRequest,
   type LoginResult,
 } from "./api";
 import {
@@ -94,6 +96,8 @@ export interface AuthContextValue {
   activeTenant: Tenant | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  switchTenant: (tenantId: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -258,6 +262,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("unauthenticated");
   }, []);
 
+  const switchTenant = useCallback(async (tenantId: string) => {
+    const newToken = await switchTenantRequest(tenantId);
+    applyToken(newToken);
+    scheduleRefreshFromToken(newToken);
+
+    // Find the matching membership to build the tenant object and get the role
+    const membership = memberships.find((m) => m.tenantId === tenantId);
+    const newTenant: Tenant = membership
+      ? { id: membership.tenantId, name: membership.tenantName, slug: "" }
+      : { id: tenantId, name: tenantId, slug: "" };
+
+    // Update the user's role for the new tenant if we found the membership
+    const updatedUser = user && membership
+      ? { ...user, role: membership.role }
+      : user;
+
+    const updatedSession: PersistedSession = {
+      user: updatedUser ?? (user as User),
+      activeTenant: newTenant,
+      memberships,
+    };
+
+    saveSession(updatedSession);
+    setActiveTenant(newTenant);
+    if (updatedUser) setUser(updatedUser);
+  }, [memberships, user]);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await changePasswordRequest(currentPassword, newPassword);
+  }, []);
+
   const value: AuthContextValue = {
     status,
     user,
@@ -265,6 +300,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     activeTenant,
     login,
     logout,
+    switchTenant,
+    changePassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

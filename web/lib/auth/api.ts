@@ -66,3 +66,87 @@ export async function logoutRequest(): Promise<void> {
     credentials: "include",
   });
 }
+
+export async function switchTenantRequest(tenantId: string): Promise<string> {
+  const { getAccessToken } = await import("@/lib/auth/token-store");
+  const token = getAccessToken();
+  const res = await fetch(`${BASE}/auth/switch-tenant`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ tenantId }),
+  });
+  if (!res.ok) {
+    let message = `Switch tenant failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      message = b?.error?.message ?? b?.message ?? message;
+    } catch {
+      // ignore
+    }
+    throw new AuthError(message, res.status);
+  }
+  const data = (await res.json()) as { accessToken: string };
+  return data.accessToken;
+}
+
+export async function changePasswordRequest(
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const { getAccessToken } = await import("@/lib/auth/token-store");
+  const token = getAccessToken();
+  const res = await fetch(`${BASE}/auth/password`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!res.ok) {
+    let message = `Change password failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      message = b?.error?.message ?? b?.message ?? message;
+    } catch {
+      // ignore
+    }
+    throw new AuthError(message, res.status);
+  }
+}
+
+export async function forgotRequest(email: string): Promise<void> {
+  await fetch(`${BASE}/auth/forgot`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetRequest(
+  token: string,
+  newPassword: string
+): Promise<void> {
+  const res = await fetch(`${BASE}/auth/reset`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!res.ok) {
+    let message = `Reset password failed: ${res.status}`;
+    try {
+      const b = await res.json();
+      message = b?.error?.message ?? b?.message ?? message;
+    } catch {
+      // ignore
+    }
+    throw new AuthError(message, res.status);
+  }
+}

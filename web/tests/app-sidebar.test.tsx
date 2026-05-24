@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { renderWithProviders, screen } from "./test-utils";
 import { AppSidebar } from "@/components/app/app-sidebar";
 
 vi.mock("next/navigation", () => ({
@@ -15,21 +15,31 @@ vi.mock("next/link", () => ({
 }));
 
 describe("AppSidebar", () => {
-  it("renders all three nav links", () => {
-    render(<AppSidebar />);
+  it("renders the base three nav links for non-admin users", () => {
+    renderWithProviders(<AppSidebar />);
     expect(screen.getByRole("link", { name: /dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /runs/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /exceptions/i })).toBeInTheDocument();
   });
 
+  it("does NOT show Users link for non-admin users", () => {
+    renderWithProviders(<AppSidebar />);
+    expect(screen.queryByRole("link", { name: /^users$/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Users link for admin users", () => {
+    renderWithProviders(<AppSidebar />, { currentUserId: "user-ada" });
+    expect(screen.getByRole("link", { name: /^users$/i })).toBeInTheDocument();
+  });
+
   it("active link (/dashboard) has aria-current=page", () => {
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     const dashboardLink = screen.getByRole("link", { name: /dashboard/i });
     expect(dashboardLink).toHaveAttribute("aria-current", "page");
   });
 
   it("inactive links do not have aria-current", () => {
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     const runsLink = screen.getByRole("link", { name: /runs/i });
     const exceptionsLink = screen.getByRole("link", { name: /exceptions/i });
     expect(runsLink).not.toHaveAttribute("aria-current");
@@ -40,7 +50,7 @@ describe("AppSidebar", () => {
     const { usePathname } = await import("next/navigation");
     vi.mocked(usePathname).mockReturnValue("/runs");
 
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     const runsLink = screen.getByRole("link", { name: /runs/i });
     expect(runsLink).toHaveAttribute("aria-current", "page");
 
@@ -52,18 +62,18 @@ describe("AppSidebar", () => {
     const { usePathname } = await import("next/navigation");
     vi.mocked(usePathname).mockReturnValue("/exceptions/case-001");
 
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     const exceptionsLink = screen.getByRole("link", { name: /exceptions/i });
     expect(exceptionsLink).toHaveAttribute("aria-current", "page");
   });
 
   it("renders a navigation landmark", () => {
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     expect(screen.getByRole("navigation", { name: /main navigation/i })).toBeInTheDocument();
   });
 
   it("renders the product wordmark", () => {
-    render(<AppSidebar />);
+    renderWithProviders(<AppSidebar />);
     expect(screen.getByText("Recon")).toBeInTheDocument();
   });
 });

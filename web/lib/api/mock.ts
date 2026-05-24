@@ -1,13 +1,15 @@
-import type { Break, Case, CaseEvent, CanonicalTransaction } from "@/lib/domain/types";
+import type { Break, Case, CaseEvent, CanonicalTransaction, User } from "@/lib/domain/types";
 import { approve, reject, requestApproval } from "@/lib/case/approval";
 import type {
   ApiClient,
   BreakQuery,
+  CreateUserInput,
   DashboardSummary,
   MatchSuggestion,
   NewCaseEvent,
   RunDetail,
   RunQuery,
+  UpdateUserPatch,
 } from "./client";
 import { buildFixtures, type Fixtures } from "./fixtures";
 
@@ -57,6 +59,43 @@ export class MockApiClient implements ApiClient {
     await this.delay();
     // All users are available for all tenants in this dev fixture
     return deepClone(this.state.users);
+  }
+
+  async createUser(
+    _tenantId: string,
+    input: CreateUserInput
+  ): Promise<User> {
+    await this.delay();
+    const newUser: User = {
+      id: nextId(),
+      name: input.name,
+      email: input.email,
+      role: input.role,
+      disabled: false,
+    };
+    this.state.users.push(newUser);
+    return deepClone(newUser);
+  }
+
+  async updateUser(
+    _tenantId: string,
+    userId: string,
+    patch: UpdateUserPatch
+  ): Promise<void> {
+    await this.delay();
+    const idx = this.state.users.findIndex((u) => u.id === userId);
+    if (idx === -1) throw new Error(`User "${userId}" not found.`);
+    this.state.users[idx] = { ...this.state.users[idx], ...patch };
+  }
+
+  async deleteUser(
+    _tenantId: string,
+    userId: string
+  ): Promise<void> {
+    await this.delay();
+    const idx = this.state.users.findIndex((u) => u.id === userId);
+    if (idx === -1) throw new Error(`User "${userId}" not found.`);
+    this.state.users.splice(idx, 1);
   }
 
   // -------------------------------------------------------------------------

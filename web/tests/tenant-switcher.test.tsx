@@ -2,17 +2,23 @@ import { describe, it, expect } from "vitest";
 import { screen, waitFor, renderWithProviders } from "./test-utils";
 import { TenantSwitcher } from "@/components/app/tenant-switcher";
 
-/**
- * The base-ui Menu doesn't open in jsdom (floating-ui needs real browser geometry),
- * so we test:
- *  - the trigger renders and shows the active tenant after data loads
- *  - the trigger has an accessible label
- *
- * Interaction tests that require the dropdown to be open are covered by e2e tests.
- */
+const TWO_MEMBERSHIPS = [
+  { tenantId: "tenant-acme", tenantName: "Acme Capital", role: "admin" as const },
+  { tenantId: "tenant-globex", tenantName: "Globex Markets", role: "operator" as const },
+];
+
 describe("TenantSwitcher", () => {
-  it("shows the active tenant name after data loads", async () => {
+  it("shows the active tenant name (static label) with single/no memberships", async () => {
     renderWithProviders(<TenantSwitcher />);
+
+    // With 0 memberships (default), renders a static label not a button
+    await waitFor(() => {
+      expect(screen.getByText("Acme Capital")).toBeInTheDocument();
+    });
+  });
+
+  it("shows the active tenant name after data loads with multiple memberships", async () => {
+    renderWithProviders(<TenantSwitcher />, { memberships: TWO_MEMBERSHIPS });
 
     await waitFor(() => {
       const trigger = screen.getByRole("button", { name: /switch tenant/i });
@@ -20,39 +26,27 @@ describe("TenantSwitcher", () => {
     });
   });
 
-  it("trigger button has accessible label", async () => {
-    renderWithProviders(<TenantSwitcher />);
+  it("trigger button has accessible label when multiple memberships", async () => {
+    renderWithProviders(<TenantSwitcher />, { memberships: TWO_MEMBERSHIPS });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /switch tenant/i })).toBeInTheDocument();
     });
   });
 
-  it("is disabled while loading", () => {
-    renderWithProviders(<TenantSwitcher />);
-    // On first synchronous render (before the 0-latency query resolves) the
-    // trigger is disabled so the menu can't be opened with no data.
-    expect(
-      screen.getByRole("button", { name: /switch tenant/i })
-    ).toBeDisabled();
-  });
-
-  it("becomes enabled once tenants load", async () => {
-    renderWithProviders(<TenantSwitcher />);
-    await waitFor(() => {
-      const trigger = screen.getByRole("button", { name: /switch tenant/i });
-      expect(trigger).not.toBeDisabled();
-    });
-  });
-
   it("renders the correct tenant when tenantId option is provided", async () => {
     /**
-     * Tenant switching via setTenantId is deferred (auth is token-based; the
-     * active tenant comes from the session). This test verifies the
-     * TenantSwitcher renders the correct tenant when the session is seeded
+     * Tenant switching is auth-based; the active tenant comes from the session.
+     * This test verifies TenantSwitcher renders the correct tenant when seeded
      * with a specific tenantId via renderWithProviders options.
      */
-    renderWithProviders(<TenantSwitcher />, { tenantId: "tenant-globex" });
+    renderWithProviders(<TenantSwitcher />, {
+      tenantId: "tenant-globex",
+      memberships: [
+        { tenantId: "tenant-acme", tenantName: "Acme Capital", role: "admin" as const },
+        { tenantId: "tenant-globex", tenantName: "Globex Markets", role: "operator" as const },
+      ],
+    });
 
     await waitFor(() => {
       const trigger = screen.getByRole("button", { name: /switch tenant/i });

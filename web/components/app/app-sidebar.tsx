@@ -2,23 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, TriangleAlert, Scale, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, ListChecks, TriangleAlert, Scale, Users, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  adminOnly?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: ListChecks },
   { href: "/exceptions", label: "Exceptions", icon: TriangleAlert },
+  { href: "/users", label: "Users", icon: Users, adminOnly: true },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   return (
     <div className="flex h-full flex-col text-sidebar-foreground">
@@ -30,7 +35,7 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav aria-label="Main navigation" className="flex flex-col gap-0.5 p-2 flex-1">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).map(({ href, label, icon: Icon }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link

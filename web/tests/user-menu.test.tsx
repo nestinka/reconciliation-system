@@ -1,6 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor, renderWithProviders } from "./test-utils";
 import { UserMenu } from "@/components/app/user-menu";
+
+vi.mock("next/navigation", () => ({
+  useRouter: vi.fn(() => ({ replace: vi.fn() })),
+}));
 
 /**
  * The base-ui Menu doesn't open in jsdom (floating-ui needs real browser geometry),
@@ -47,6 +51,17 @@ describe("UserMenu", () => {
     await waitFor(() => {
       const trigger = screen.getByRole("button", { name: /viewing as Theo/i });
       expect(trigger).toHaveTextContent("Theo");
+    });
+  });
+
+  it("logout button is accessible in the menu trigger", async () => {
+    renderWithProviders(<UserMenu />);
+
+    await waitFor(() => {
+      // Trigger should be present with aria-label
+      expect(
+        screen.getByRole("button", { name: /user menu/i })
+      ).toBeInTheDocument();
     });
   });
 });

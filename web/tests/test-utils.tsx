@@ -6,7 +6,7 @@ import { ThemeProvider } from "next-themes";
 import { ApiProvider } from "@/lib/api/provider";
 import { MockApiClient } from "@/lib/api/mock";
 import { MockAuthProvider } from "@/lib/auth/mock-auth-provider";
-import type { User, Tenant } from "@/lib/domain/types";
+import type { User, Tenant, Membership } from "@/lib/domain/types";
 
 export { screen, waitFor, within, act } from "@testing-library/react";
 export { default as userEvent } from "@testing-library/user-event";
@@ -21,6 +21,8 @@ export interface RenderOptions {
   currentUserId?: string;
   /** Override which tenant is active (by id). Populates useTenant(). */
   tenantId?: string;
+  /** Seed memberships for the session (used by TenantSwitcher etc.). */
+  memberships?: Membership[];
   /** Pre-seed URL search params for nuqs filters (e.g. "?type=duplicate" or { type: "duplicate" }). */
   searchParams?: string | Record<string, string>;
 }
@@ -77,7 +79,7 @@ export function renderWithProviders(
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <MockAuthProvider session={{ user, activeTenant: tenant }}>
+        <MockAuthProvider session={{ user, activeTenant: tenant, memberships: options.memberships ?? [] }}>
           <ApiProvider client={mockClient}>
             <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
               <NuqsTestingAdapter searchParams={nuqsSearchParams}>

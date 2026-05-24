@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -127,6 +128,15 @@ export default function LoginPage() {
           >
             {isSubmitting ? "Signing in…" : "Sign in"}
           </Button>
+
+          <p className="text-center text-sm text-muted-foreground">
+            <Link
+              href="/forgot"
+              className="text-foreground underline underline-offset-4 hover:text-muted-foreground"
+            >
+              Forgot your password?
+            </Link>
+          </p>
         </form>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import type {
   Tenant,
   User,
+  UserRole,
   ReconciliationRun,
   RunStatus,
   MatchDecision,
@@ -56,9 +57,24 @@ export interface BreakQuery {
 
 export type NewCaseEvent = Omit<CaseEvent, "id" | "at">;
 
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  role: UserRole;
+  password: string;
+}
+
+export interface UpdateUserPatch {
+  role?: UserRole;
+  disabled?: boolean;
+}
+
 export interface ApiClient {
   listTenants(): Promise<Tenant[]>;
   listUsers(tenantId: string): Promise<User[]>;
+  createUser(tenantId: string, input: CreateUserInput): Promise<User>;
+  updateUser(tenantId: string, userId: string, patch: UpdateUserPatch): Promise<void>;
+  deleteUser(tenantId: string, userId: string): Promise<void>;
   getDashboard(tenantId: string): Promise<DashboardSummary>;
   listRuns(tenantId: string, q?: RunQuery): Promise<ReconciliationRun[]>;
   getRun(tenantId: string, runId: string): Promise<RunDetail>;

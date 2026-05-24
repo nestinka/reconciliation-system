@@ -42,6 +42,8 @@ export function MockAuthProvider({
     memberships: session.memberships ?? [],
     login: async () => {},
     logout: async () => {},
+    switchTenant: async () => {},
+    changePassword: async () => {},
   };
 
   return (

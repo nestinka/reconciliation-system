@@ -1,5 +1,5 @@
 import type {
-  ApiClient, BreakQuery, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery,
+  ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch,
 } from "./client";
 import type {
   Break, Case, CanonicalTransaction, ReconciliationRun, Tenant, User,
@@ -55,6 +55,15 @@ export class HttpApiClient implements ApiClient {
 
   listTenants(): Promise<Tenant[]> { return this.req("/api/tenants", null); }
   listUsers(tenantId: string): Promise<User[]> { return this.req("/api/users", tenantId); }
+  createUser(tenantId: string, input: CreateUserInput): Promise<User> {
+    return this.req("/api/users", tenantId, { method: "POST", body: JSON.stringify(input) });
+  }
+  async updateUser(tenantId: string, userId: string, patch: UpdateUserPatch): Promise<void> {
+    await this.req(`/api/users/${userId}`, tenantId, { method: "PATCH", body: JSON.stringify(patch) });
+  }
+  async deleteUser(tenantId: string, userId: string): Promise<void> {
+    await this.req(`/api/users/${userId}`, tenantId, { method: "DELETE" });
+  }
   getDashboard(tenantId: string): Promise<DashboardSummary> { return this.req("/api/dashboard", tenantId); }
   listRuns(tenantId: string, q?: RunQuery): Promise<ReconciliationRun[]> {
     return this.req(`/api/runs${this.qs({ status: q?.status, sourceId: q?.sourceId, from: q?.from, to: q?.to })}`, tenantId);
