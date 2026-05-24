@@ -1,0 +1,4 @@
+[package]
+name = "recon-store"
+edition.workspace = true
+version.workspace = true

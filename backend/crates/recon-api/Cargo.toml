@@ -1,0 +1,8 @@
+[package]
+name = "recon-api"
+edition.workspace = true
+version.workspace = true
+
+[[bin]]
+name = "recon-api"
+path = "src/main.rs"

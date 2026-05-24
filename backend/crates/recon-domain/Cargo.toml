@@ -1,0 +1,4 @@
+[package]
+name = "recon-domain"
+edition.workspace = true
+version.workspace = true
