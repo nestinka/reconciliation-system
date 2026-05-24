@@ -83,6 +83,17 @@ pub struct Tenant {
 pub struct User {
     pub id: String,
     pub name: String,
+    pub email: String,
+    pub disabled: bool,
+    /// Role in the active-tenant context.
+    pub role: UserRole,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Membership {
+    pub tenant_id: String,
+    pub tenant_name: String,
     pub role: UserRole,
 }
 
@@ -206,5 +217,22 @@ mod tests {
             serde_json::to_value(MatchType::Duplicate).unwrap(),
             "duplicate"
         );
+    }
+
+    #[test]
+    fn user_serializes_camel_case_with_email() {
+        let u = User { id: "u1".into(), name: "Mia".into(), email: "mia@acme.test".into(), disabled: false, role: UserRole::Operator };
+        let j = serde_json::to_value(&u).unwrap();
+        assert_eq!(j["email"], "mia@acme.test");
+        assert_eq!(j["disabled"], false);
+        assert_eq!(j["role"], "operator");
+    }
+    #[test]
+    fn membership_camel_case() {
+        let m = Membership { tenant_id: "t1".into(), tenant_name: "Acme".into(), role: UserRole::Admin };
+        let j = serde_json::to_value(&m).unwrap();
+        assert_eq!(j["tenantId"], "t1");
+        assert_eq!(j["tenantName"], "Acme");
+        assert_eq!(j["role"], "admin");
     }
 }

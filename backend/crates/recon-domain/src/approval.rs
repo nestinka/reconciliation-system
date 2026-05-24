@@ -64,6 +64,8 @@ mod tests {
         User {
             id: id.into(),
             name: id.into(),
+            email: format!("{}@example.com", id),
+            disabled: false,
             role,
         }
     }
