@@ -1,32 +1,59 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { usePersistedState } from "@/lib/hooks/use-persisted-state";
-
-const STORAGE_KEY = "recon:activeTenantId";
-const DEFAULT_TENANT = "tenant-acme";
+import { AuthContext } from "@/lib/auth/auth-provider";
 
 interface TenantContextValue {
   tenantId: string;
   setTenantId: (id: string) => void;
 }
 
+// Fallback context used by tests that inject a seeded tenant without a full
+// AuthProvider (e.g. the TestTenantProvider below).
 const TenantContext = createContext<TenantContextValue | null>(null);
 
+/**
+ * Kept for backwards-compatibility. No longer manages state; the tenant now
+ * comes from AuthProvider. This is a no-op pass-through.
+ */
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const [tenantId, setTenantId] = usePersistedState(STORAGE_KEY, DEFAULT_TENANT);
-
-  return (
-    <TenantContext.Provider value={{ tenantId, setTenantId }}>
-      {children}
-    </TenantContext.Provider>
-  );
+  return <>{children}</>;
 }
 
 export function useTenant(): TenantContextValue {
-  const ctx = useContext(TenantContext);
-  if (!ctx) {
-    throw new Error("useTenant must be used inside <TenantProvider>");
+  // Always call both hooks unconditionally (rules-of-hooks requirement).
+  const auth = useContext(AuthContext);
+  const fallback = useContext(TenantContext);
+
+  if (auth) {
+    return {
+      tenantId: auth.activeTenant?.id ?? "tenant-acme",
+      setTenantId: () => {
+        // Tenant switching is deferred to a later sprint; no-op for now.
+      },
+    };
   }
-  return ctx;
+
+  if (fallback) return fallback;
+
+  // Default when neither provider is in the tree.
+  return { tenantId: "tenant-acme", setTenantId: () => {} };
+}
+
+/**
+ * Test helper: wrap children with a seeded TenantContext value so components
+ * that call useTenant() outside of AuthProvider get a deterministic tenant.
+ */
+export function TestTenantProvider({
+  tenantId,
+  children,
+}: {
+  tenantId: string;
+  children: ReactNode;
+}) {
+  return (
+    <TenantContext.Provider value={{ tenantId, setTenantId: () => {} }}>
+      {children}
+    </TenantContext.Provider>
+  );
 }

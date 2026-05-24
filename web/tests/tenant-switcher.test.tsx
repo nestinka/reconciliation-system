@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, userEvent, renderWithProviders } from "./test-utils";
+import { screen, waitFor, renderWithProviders } from "./test-utils";
 import { TenantSwitcher } from "@/components/app/tenant-switcher";
-import { useTenant } from "@/lib/providers/tenant-provider";
 
 /**
  * The base-ui Menu doesn't open in jsdom (floating-ui needs real browser geometry),
@@ -46,38 +45,15 @@ describe("TenantSwitcher", () => {
     });
   });
 
-  it("setTenantId changes the active tenant shown in trigger", async () => {
+  it("renders the correct tenant when tenantId option is provided", async () => {
     /**
-     * We cannot open the menu in jsdom, but we can test the underlying context
-     * by rendering a helper that calls setTenantId directly.
+     * Tenant switching via setTenantId is deferred (auth is token-based; the
+     * active tenant comes from the session). This test verifies the
+     * TenantSwitcher renders the correct tenant when the session is seeded
+     * with a specific tenantId via renderWithProviders options.
      */
-    function ContextChanger() {
-      const { setTenantId } = useTenant();
-      return (
-        <button onClick={() => setTenantId("tenant-globex")}>
-          Switch to Globex
-        </button>
-      );
-    }
+    renderWithProviders(<TenantSwitcher />, { tenantId: "tenant-globex" });
 
-    renderWithProviders(
-      <>
-        <TenantSwitcher />
-        <ContextChanger />
-      </>
-    );
-
-    // Wait for Acme to load
-    await waitFor(() => {
-      const trigger = screen.getByRole("button", { name: /switch tenant/i });
-      expect(trigger).toHaveTextContent("Acme Capital");
-    });
-
-    // Switch tenant via the test helper
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to globex/i }));
-
-    // Now the trigger should show Globex
     await waitFor(() => {
       const trigger = screen.getByRole("button", { name: /switch tenant/i });
       expect(trigger).toHaveTextContent("Globex Markets");

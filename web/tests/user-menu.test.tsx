@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { screen, waitFor, userEvent, renderWithProviders } from "./test-utils";
+import { screen, waitFor, renderWithProviders } from "./test-utils";
 import { UserMenu } from "@/components/app/user-menu";
-import { useCurrentUserId } from "@/lib/providers/current-user-provider";
 
 /**
  * The base-ui Menu doesn't open in jsdom (floating-ui needs real browser geometry),
@@ -36,41 +35,18 @@ describe("UserMenu", () => {
     });
   });
 
-  it("setCurrentUserId changes the user shown in the trigger", async () => {
+  it("renders the correct user when currentUserId option is provided", async () => {
     /**
-     * We cannot open the menu in jsdom, but we can test the underlying context
-     * by rendering a helper that calls setCurrentUserId directly.
+     * User switching via setCurrentUserId is no longer supported (auth is
+     * token-based; the active user comes from the JWT/session). This test
+     * verifies the UserMenu renders the correct user when the session is
+     * seeded with a specific user via renderWithProviders options.
      */
-    function ContextChanger() {
-      const { setCurrentUserId } = useCurrentUserId();
-      return (
-        <button onClick={() => setCurrentUserId("user-sam")}>
-          Switch to Sam
-        </button>
-      );
-    }
+    renderWithProviders(<UserMenu />, { currentUserId: "user-theo" });
 
-    renderWithProviders(
-      <>
-        <UserMenu />
-        <ContextChanger />
-      </>
-    );
-
-    // Wait for Mia to load
     await waitFor(() => {
-      const trigger = screen.getByRole("button", { name: /viewing as Mia/i });
-      expect(trigger).toHaveTextContent("Mia");
-    });
-
-    // Switch user via the test helper
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to sam/i }));
-
-    // Now the trigger should show Sam
-    await waitFor(() => {
-      const trigger = screen.getByRole("button", { name: /viewing as Sam/i });
-      expect(trigger).toHaveTextContent("Sam");
+      const trigger = screen.getByRole("button", { name: /viewing as Theo/i });
+      expect(trigger).toHaveTextContent("Theo");
     });
   });
 });

@@ -4,23 +4,40 @@ import type {
 import type {
   Break, Case, CanonicalTransaction, ReconciliationRun, Tenant, User,
 } from "@/lib/domain/types";
+import { getAccessToken, runRefresh } from "@/lib/auth/token-store";
 
 export class HttpApiClient implements ApiClient {
   constructor(private readonly baseUrl: string) {}
 
-  private currentUserId(): string {
-    if (typeof window !== "undefined") {
-      return window.localStorage.getItem("recon:currentUserId") ?? "user-mia";
-    }
-    return "user-mia";
-  }
-
-  private async req<T>(path: string, tenantId: string | null, init?: RequestInit): Promise<T> {
+  private async req<T>(path: string, _tenantId: string | null, init?: RequestInit): Promise<T> {
     const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
-    if (tenantId) headers["X-Tenant-Id"] = tenantId;
-    headers["X-User-Id"] = this.currentUserId();
+    const token = getAccessToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     if (init?.body) headers["Content-Type"] = "application/json";
+
     const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+
+    if (res.status === 401) {
+      // Attempt a silent refresh once
+      const newToken = await runRefresh();
+      if (newToken) {
+        const retryHeaders: Record<string, string> = { ...(init?.headers as Record<string, string>) };
+        retryHeaders["Authorization"] = `Bearer ${newToken}`;
+        if (init?.body) retryHeaders["Content-Type"] = "application/json";
+        const retryRes = await fetch(`${this.baseUrl}${path}`, { ...init, headers: retryHeaders });
+        if (!retryRes.ok) {
+          let detail = `${retryRes.status}`;
+          try { const b = await retryRes.json(); detail = b?.error?.code ?? b?.error?.message ?? detail; } catch { /* ignore */ }
+          throw new Error(`API ${retryRes.status}: ${detail}`);
+        }
+        return retryRes.json() as Promise<T>;
+      }
+      // Refresh failed — throw the original 401
+      let detail = "401";
+      try { const b = await res.clone().json(); detail = b?.error?.code ?? b?.error?.message ?? detail; } catch { /* ignore */ }
+      throw new Error(`API 401: ${detail}`);
+    }
+
     if (!res.ok) {
       let detail = `${res.status}`;
       try { const b = await res.json(); detail = b?.error?.code ?? b?.error?.message ?? detail; } catch { /* ignore */ }

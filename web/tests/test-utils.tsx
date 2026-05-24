@@ -5,20 +5,38 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ThemeProvider } from "next-themes";
 import { ApiProvider } from "@/lib/api/provider";
 import { MockApiClient } from "@/lib/api/mock";
-import { TenantProvider } from "@/lib/providers/tenant-provider";
-import { CurrentUserProvider } from "@/lib/providers/current-user-provider";
+import { MockAuthProvider } from "@/lib/auth/mock-auth-provider";
+import type { User, Tenant } from "@/lib/domain/types";
 
 export { screen, waitFor, within, act } from "@testing-library/react";
 export { default as userEvent } from "@testing-library/user-event";
 
+// Re-export legacy provider names so existing test files that import them
+// still compile. The providers are now no-op stubs but the import is valid.
+export { TenantProvider } from "@/lib/providers/tenant-provider";
+export { CurrentUserProvider } from "@/lib/providers/current-user-provider";
+
 export interface RenderOptions {
-  /** Pre-seed localStorage with a specific tenantId before rendering. */
-  tenantId?: string;
-  /** Pre-seed localStorage with a specific currentUserId before rendering. */
+  /** Override which user is active (by id). Populates useCurrentUserId(). */
   currentUserId?: string;
+  /** Override which tenant is active (by id). Populates useTenant(). */
+  tenantId?: string;
   /** Pre-seed URL search params for nuqs filters (e.g. "?type=duplicate" or { type: "duplicate" }). */
   searchParams?: string | Record<string, string>;
 }
+
+// Minimal fixture data so the mock auth session can look up names from ids.
+const FIXTURE_USERS: Record<string, User> = {
+  "user-mia":  { id: "user-mia",  name: "Mia",  role: "operator" },
+  "user-sam":  { id: "user-sam",  name: "Sam",  role: "operator" },
+  "user-theo": { id: "user-theo", name: "Theo", role: "approver" },
+  "user-ada":  { id: "user-ada",  name: "Ada",  role: "admin" },
+};
+
+const FIXTURE_TENANTS: Record<string, Tenant> = {
+  "tenant-acme":   { id: "tenant-acme",   name: "Acme Capital",   slug: "acme-capital" },
+  "tenant-globex": { id: "tenant-globex", name: "Globex Markets", slug: "globex-markets" },
+};
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -39,15 +57,11 @@ export function renderWithProviders(
   const queryClient = makeQueryClient();
   const mockClient = new MockApiClient({ latencyMs: 0 });
 
-  // Pre-seed the tenant if caller requests a specific one.
-  if (options.tenantId) {
-    window.localStorage.setItem("recon:activeTenantId", options.tenantId);
-  }
+  const userId = options.currentUserId ?? "user-mia";
+  const tenantId = options.tenantId ?? "tenant-acme";
 
-  // Pre-seed the current user if caller requests a specific one.
-  if (options.currentUserId) {
-    window.localStorage.setItem("recon:currentUserId", options.currentUserId);
-  }
+  const user = FIXTURE_USERS[userId] ?? { id: userId, name: userId, role: "operator" as const };
+  const tenant = FIXTURE_TENANTS[tenantId] ?? { id: tenantId, name: tenantId, slug: tenantId };
 
   // Normalise searchParams: NuqsTestingAdapter accepts Record<string, string>.
   let nuqsSearchParams: Record<string, string> | undefined;
@@ -60,21 +74,18 @@ export function renderWithProviders(
     }
   }
 
-  // Wrap providers: QueryClient > ApiProvider > TenantProvider > CurrentUserProvider > ThemeProvider > NuqsTestingAdapter
   function Wrapper({ children }: { children: React.ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ApiProvider client={mockClient}>
-          <TenantProvider>
-            <CurrentUserProvider>
-              <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-                <NuqsTestingAdapter searchParams={nuqsSearchParams}>
-                  {children}
-                </NuqsTestingAdapter>
-              </ThemeProvider>
-            </CurrentUserProvider>
-          </TenantProvider>
-        </ApiProvider>
+        <MockAuthProvider session={{ user, activeTenant: tenant }}>
+          <ApiProvider client={mockClient}>
+            <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+              <NuqsTestingAdapter searchParams={nuqsSearchParams}>
+                {children}
+              </NuqsTestingAdapter>
+            </ThemeProvider>
+          </ApiProvider>
+        </MockAuthProvider>
       </QueryClientProvider>
     );
   }

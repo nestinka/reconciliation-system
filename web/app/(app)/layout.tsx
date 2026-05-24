@@ -1,10 +1,40 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { TenantSwitcher } from "@/components/app/tenant-switcher";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { UserMenu } from "@/components/app/user-menu";
+import { useAuth } from "@/lib/auth/auth-provider";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
+  const { status } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [status, router]);
+
+  if (status === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div
+          className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-foreground"
+          aria-label="Loading"
+          role="status"
+        />
+      </div>
+    );
+  }
+
+  if (status === "unauthenticated") {
+    // Render nothing while redirect is in flight
+    return null;
+  }
+
   return (
     <div className="flex h-full min-h-screen">
       {/* Fixed left sidebar */}

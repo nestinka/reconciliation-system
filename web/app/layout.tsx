@@ -4,8 +4,7 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ThemeProvider } from "@/lib/providers/theme-provider";
 import { QueryProvider } from "@/lib/providers/query-provider";
 import { ApiProvider } from "@/lib/api/provider";
-import { TenantProvider } from "@/lib/providers/tenant-provider";
-import { CurrentUserProvider } from "@/lib/providers/current-user-provider";
+import { AuthProvider } from "@/lib/auth/auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -38,16 +37,14 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <QueryProvider>
-            <ApiProvider>
-              <TenantProvider>
-                <CurrentUserProvider>
-                  <NuqsAdapter>
-                    {children}
-                    <Toaster />
-                  </NuqsAdapter>
-                </CurrentUserProvider>
-              </TenantProvider>
-            </ApiProvider>
+            <AuthProvider>
+              <ApiProvider>
+                <NuqsAdapter>
+                  {children}
+                  <Toaster />
+                </NuqsAdapter>
+              </ApiProvider>
+            </AuthProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>
