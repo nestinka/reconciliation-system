@@ -176,8 +176,10 @@ test.describe("Operator loop – four-eyes approval flow", () => {
       page.getByRole("region", { name: /four-eyes approval/i })
     ).not.toBeAttached();
 
-    // Status pill shows "Resolved"
-    await expect(page.getByText("Resolved")).toBeVisible();
+    // Status pill shows "Resolved" (both the header pill and the break-context
+    // status now read "Resolved" because the backend transitions the linked
+    // break too — scope to the first match to avoid strict-mode ambiguity).
+    await expect(page.getByText("Resolved").first()).toBeVisible();
   });
 
   test("Full operator loop: dashboard → exceptions → pending case → switch user → approve", async ({
@@ -227,6 +229,6 @@ test.describe("Operator loop – four-eyes approval flow", () => {
     await expect(
       page.getByRole("region", { name: /four-eyes approval/i })
     ).not.toBeAttached();
-    await expect(page.getByText("Resolved")).toBeVisible();
+    await expect(page.getByText("Resolved").first()).toBeVisible();
   });
 });
