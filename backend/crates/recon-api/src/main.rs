@@ -1,6 +1,7 @@
 use recon_api::routes::router;
-use recon_api::state::AppState;
+use recon_api::state::{AppState, AuthConfig};
 use recon_store::Store;
+use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -38,7 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = router(AppState { store })
+    let app = router(AppState {
+        store,
+        cfg: Arc::new(AuthConfig::from_env()),
+        mailer: Arc::new(recon_mail::LogMailer),
+    })
         .layer(TraceLayer::new_for_http())
         .layer(cors);
 
