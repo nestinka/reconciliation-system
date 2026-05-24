@@ -35,4 +35,5 @@ tower = { workspace = true }
 http-body-util = "0.1"
 recon-auth = { path = "../recon-auth" }
 recon-domain = { path = "../recon-domain" }
+recon-mail = { path = "../recon-mail", features = ["test-util"] }
 time = { workspace = true }

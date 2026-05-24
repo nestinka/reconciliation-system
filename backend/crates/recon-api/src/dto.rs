@@ -25,6 +25,50 @@ pub struct BreakQ {
     pub assignee_id: Option<String>,
 }
 
+// --- New Auth/Admin DTOs ---
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchTenantReq {
+    pub tenant_id: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangePasswordReq {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForgotReq {
+    pub email: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResetReq {
+    pub token: String,
+    pub new_password: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateUserReq {
+    pub name: String,
+    pub email: String,
+    pub role: recon_domain::UserRole,
+    pub password: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PatchUserReq {
+    pub role: Option<recon_domain::UserRole>,
+    pub disabled: Option<bool>,
+}
+
 // --- Auth DTOs ---
 
 #[derive(serde::Deserialize)]

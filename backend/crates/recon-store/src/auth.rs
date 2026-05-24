@@ -141,6 +141,16 @@ impl Store {
         .map_err(StoreError::from)
     }
 
+    pub async fn password_hash_for(&self, user_id: &str) -> Result<Option<String>, StoreError> {
+        sqlx::query_scalar::<_, String>(
+            "SELECT password_hash FROM user_credentials WHERE user_id=$1",
+        )
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(StoreError::from)
+    }
+
     pub async fn set_password(&self, user_id: &str, password_hash: &str) -> Result<(), StoreError> {
         sqlx::query(
             "UPDATE user_credentials SET password_hash=$2, password_updated_at=now(), failed_attempts=0, locked_until=NULL WHERE user_id=$1",

@@ -17,8 +17,21 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(crate::routes_auth::login))
         .route("/auth/refresh", post(crate::routes_auth::refresh))
         .route("/auth/logout", post(crate::routes_auth::logout))
+        .route("/auth/switch-tenant", post(crate::routes_auth::switch_tenant))
+        .route("/auth/password", post(crate::routes_auth::change_password))
+        .route("/auth/forgot", post(crate::routes_auth::forgot))
+        .route("/auth/reset", post(crate::routes_auth::reset))
         .route("/api/tenants", get(list_tenants))
-        .route("/api/users", get(list_users))
+        // Admin-guarded user management (replaces the old unsecured list_users).
+        .route(
+            "/api/users",
+            get(crate::routes_users::list_users).post(crate::routes_users::create_user),
+        )
+        .route(
+            "/api/users/:user_id",
+            axum::routing::patch(crate::routes_users::patch_user)
+                .delete(crate::routes_users::delete_user),
+        )
         .route("/api/dashboard", get(dashboard))
         .route("/api/runs", get(list_runs))
         .route("/api/runs/:run_id", get(get_run))
@@ -35,10 +48,6 @@ pub fn router(state: AppState) -> Router {
 
 async fn list_tenants(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
     Ok(Json(json!(s.store.list_tenants().await?)))
-}
-
-async fn list_users(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
-    Ok(Json(json!(s.store.list_users(&ctx.tenant_id).await?)))
 }
 
 async fn dashboard(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
@@ -154,6 +163,11 @@ async fn append_event(
     Path(case_id): Path<String>,
     Json(ev): Json<recon_domain::NewCaseEvent>,
 ) -> Result<Json<Value>, ApiError> {
+    // RBAC: approval events require Approver or Admin role.
+    if matches!(ev.body, recon_domain::CaseEventBody::Approved {}) {
+        recon_auth::rbac::require(ctx.role, recon_auth::rbac::Permission::ApproveResolution)
+            .map_err(|_| ApiError::Forbidden())?;
+    }
     // Bind the event's actor to the authenticated identity (defeats body-actor impersonation).
     let ev = recon_domain::NewCaseEvent {
         actor_id: ctx.user_id.clone(),

@@ -28,6 +28,9 @@ impl ApiError {
     pub fn TooManyRequests() -> Self {
         Self { status: StatusCode::TOO_MANY_REQUESTS, code: "too_many_requests", message: "too many requests".into() }
     }
+    pub fn BadRequest() -> Self {
+        Self { status: StatusCode::BAD_REQUEST, code: "bad_request", message: "bad request".into() }
+    }
     pub fn unauthorized(m: impl Into<String>) -> Self {
         Self { status: StatusCode::UNAUTHORIZED, code: "unauthorized", message: m.into() }
     }

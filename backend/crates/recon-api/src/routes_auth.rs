@@ -2,7 +2,7 @@ use axum::extract::State;
 use axum::Json;
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 
-use crate::dto::{AccessTokenResp, LoginReq, LoginResp};
+use crate::dto::{AccessTokenResp, ChangePasswordReq, ForgotReq, LoginReq, LoginResp, ResetReq, SwitchTenantReq};
 use crate::error::ApiError;
 use crate::state::{AppState, AuthConfig};
 
@@ -215,4 +215,92 @@ pub async fn logout(
         jar.add(cleared_cookie(&state.cfg)),
         axum::http::StatusCode::NO_CONTENT,
     ))
+}
+
+pub async fn switch_tenant(
+    ctx: crate::auth::AuthContext,
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Json(req): Json<SwitchTenantReq>,
+) -> Result<(CookieJar, Json<AccessTokenResp>), ApiError> {
+    let role = state
+        .store
+        .role_in_tenant(&ctx.user_id, &req.tenant_id)
+        .await?
+        .ok_or_else(ApiError::Forbidden)?;
+    if let Some(c) = jar.get(REFRESH_COOKIE) {
+        let h = recon_auth::refresh::hash(c.value());
+        state.store.revoke_refresh_by_hash(&h).await?;
+    }
+    let (jar, access) = issue_session(&state, jar, &ctx.user_id, &req.tenant_id, role).await?;
+    Ok((jar, Json(AccessTokenResp { access_token: access })))
+}
+
+pub async fn change_password(
+    ctx: crate::auth::AuthContext,
+    State(state): State<AppState>,
+    Json(req): Json<ChangePasswordReq>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    if req.new_password.len() < 8 {
+        return Err(ApiError::BadRequest());
+    }
+    let hash = state
+        .store
+        .password_hash_for(&ctx.user_id)
+        .await?
+        .ok_or_else(ApiError::Unauthorized)?;
+    if !recon_auth::password::verify_password(&req.current_password, &hash).unwrap_or(false) {
+        return Err(ApiError::Forbidden());
+    }
+    let new_hash =
+        recon_auth::password::hash_password(&req.new_password).map_err(|_| ApiError::BadRequest())?;
+    state.store.set_password(&ctx.user_id, &new_hash).await?;
+    state.store.revoke_all_refresh(&ctx.user_id).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+pub async fn forgot(
+    State(state): State<AppState>,
+    Json(req): Json<ForgotReq>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    if let Some((user, _cred)) = state.store.find_credential_by_email(&req.email).await? {
+        let (plaintext, hash) = recon_auth::refresh::generate();
+        let id = recon_auth::refresh::generate().1;
+        state
+            .store
+            .insert_reset_token(&id, &user.id, &hash, now_unix() + 3600)
+            .await?;
+        let link = format!("{}/reset?token={}", state.cfg.app_base_url, plaintext);
+        let _ = state
+            .mailer
+            .send(recon_mail::Email {
+                to: req.email.clone(),
+                subject: "Reset your Recon password".into(),
+                body: format!(
+                    "Reset your password using this link: {link}\nThis link expires in 1 hour."
+                ),
+            })
+            .await;
+    }
+    Ok(axum::http::StatusCode::ACCEPTED)
+}
+
+pub async fn reset(
+    State(state): State<AppState>,
+    Json(req): Json<ResetReq>,
+) -> Result<axum::http::StatusCode, ApiError> {
+    if req.new_password.len() < 8 {
+        return Err(ApiError::BadRequest());
+    }
+    let h = recon_auth::refresh::hash(&req.token);
+    let user_id = state
+        .store
+        .consume_reset_token(&h, now_unix())
+        .await?
+        .ok_or_else(ApiError::BadRequest)?;
+    let new_hash =
+        recon_auth::password::hash_password(&req.new_password).map_err(|_| ApiError::BadRequest())?;
+    state.store.set_password(&user_id, &new_hash).await?;
+    state.store.revoke_all_refresh(&user_id).await?;
+    Ok(axum::http::StatusCode::NO_CONTENT)
 }
