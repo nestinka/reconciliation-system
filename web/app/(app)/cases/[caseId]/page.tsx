@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCase, useAppendCaseEvent } from "@/lib/hooks/use-case";
 import { useUsers } from "@/lib/hooks/use-tenants";
 import { useCurrentUserId } from "@/lib/providers/current-user-provider";
+import { useAuth } from "@/lib/auth/auth-provider";
 import { formatMoney } from "@/lib/domain/money";
 import { formatDate, formatDateTime } from "@/lib/domain/date";
 import type { User } from "@/lib/domain/types";
@@ -60,13 +61,16 @@ export default function CaseDetailPage() {
   const { data, isLoading, isError, refetch } = useCase(caseId);
   const { data: users = [] } = useUsers();
   const { currentUserId } = useCurrentUserId();
+  const { user: authUser } = useAuth();
 
   const usersById = useMemo<Record<string, User>>(
     () => Object.fromEntries(users.map((u) => [u.id, u])),
     [users]
   );
 
-  const currentUser = usersById[currentUserId];
+  // When useUsers() fails (e.g. non-admin), fall back to the authenticated user
+  // from the auth context so the ApprovalBar can still render.
+  const currentUser = usersById[currentUserId] ?? (authUser?.id === currentUserId ? authUser : undefined);
   const append = useAppendCaseEvent(caseId);
 
   if (isLoading) return <CaseDetailSkeleton />;

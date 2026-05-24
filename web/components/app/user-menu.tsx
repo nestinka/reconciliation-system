@@ -121,14 +121,14 @@ export function UserMenu() {
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem
-              onSelect={() => setShowChangePassword(true)}
+              onClick={() => setShowChangePassword(true)}
               className="gap-2 cursor-pointer"
             >
               <KeyRound aria-hidden className="size-4 text-muted-foreground" />
               Change password
             </DropdownMenuItem>
             <DropdownMenuItem
-              onSelect={() => void handleLogout()}
+              onClick={() => void handleLogout()}
               className="gap-2 cursor-pointer text-destructive focus:text-destructive"
             >
               <LogOut aria-hidden className="size-4" />
