@@ -34,3 +34,27 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Running full-stack (frontend + Rust backend)
+
+1. Start Postgres and the API:
+   ```bash
+   cd backend
+   docker compose up -d postgres
+   DATABASE_URL=postgres://recon:recon@localhost:5432/recon cargo run -p recon-api -- seed
+   RECON_DEV=1 DATABASE_URL=postgres://recon:recon@localhost:5432/recon cargo run -p recon-api
+   ```
+2. Start the frontend against it:
+   ```bash
+   cd web
+   echo 'NEXT_PUBLIC_API_BASE_URL=http://localhost:8080' > .env.local
+   pnpm dev
+   ```
+3. Open http://localhost:3000.
+
+### Running the E2E against the live stack
+With Postgres up and `RECON_DEV=1 ... cargo run -p recon-api` serving on :8080:
+```bash
+pnpm -C web e2e
+```
+Playwright starts the web dev server automatically; each test reseeds the backend via `/api/dev/reseed`.

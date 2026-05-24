@@ -53,6 +53,15 @@ async function switchUserViaMenu(page: Page, userName: string) {
   ).not.toHaveAttribute("aria-expanded", "true");
 }
 
+const RESEED_URL =
+  (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080") + "/api/dev/reseed";
+
+// Reset the backend to seeded state before each test (the four-eyes flow mutates case-pending).
+test.beforeEach(async () => {
+  const res = await fetch(RESEED_URL, { method: "POST" });
+  if (!res.ok) throw new Error(`reseed failed: ${res.status}`);
+});
+
 test.describe("Operator loop – four-eyes approval flow", () => {
   test("1. Root redirects to dashboard and shows heading + KPI text", async ({
     page,
