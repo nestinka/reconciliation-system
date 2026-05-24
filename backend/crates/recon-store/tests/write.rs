@@ -45,3 +45,19 @@ async fn comment_is_append_only_and_keeps_status(pool: sqlx::PgPool) {
     assert_eq!(c.events.len(), before + 1);
     assert_eq!(c.status, BreakStatus::PendingApproval);
 }
+
+#[sqlx::test]
+async fn seed_creates_case_pending_with_four_eyes(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    store.seed().await.unwrap();
+    let c = store.load_case("tenant-acme", "case-pending").await.unwrap();
+    assert_eq!(c.status, recon_domain::BreakStatus::PendingApproval);
+    assert!(c.events.iter().any(|e| matches!(e.body, recon_domain::CaseEventBody::ApprovalRequested { .. })));
+    // engine produced at least one matched decision for the early-window run
+    let det = store.get_run("tenant-acme", "run-acme-001").await.unwrap();
+    assert!(!det.matched.is_empty());
+    // seeding is idempotent
+    store.seed().await.unwrap();
+    let tenants = store.list_tenants().await.unwrap();
+    assert_eq!(tenants.len(), 2);
+}
