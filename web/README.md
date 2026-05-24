@@ -37,12 +37,13 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 ## Running full-stack (frontend + Rust backend)
 
-1. Start Postgres and the API:
+1. Start Postgres + Mailpit (the dev mail catcher) and the API:
    ```bash
    cd backend
-   docker compose up -d postgres
+   docker compose up -d postgres mailpit
    DATABASE_URL=postgres://recon:recon@localhost:5432/recon cargo run -p recon-api -- seed
-   RECON_DEV=1 DATABASE_URL=postgres://recon:recon@localhost:5432/recon cargo run -p recon-api
+   RECON_DEV=1 DATABASE_URL=postgres://recon:recon@localhost:5432/recon \
+     SMTP_HOST=localhost SMTP_PORT=1025 cargo run -p recon-api
    ```
 2. Start the frontend against it:
    ```bash
@@ -50,7 +51,21 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
    echo 'NEXT_PUBLIC_API_BASE_URL=http://localhost:8080' > .env.local
    pnpm dev
    ```
-3. Open http://localhost:3100.
+3. Open http://localhost:3100 and sign in.
+
+### Dev credentials (created by `seed`)
+
+All passwords are `Password123!`:
+
+| Email | Role | Tenants |
+|-------|------|---------|
+| `mia@acme.test` | operator (maker of the pending case) | Acme Capital |
+| `theo@acme.test` | approver (checker for four-eyes) | Acme Capital |
+| `ada@acme.test` | admin (user management) | Acme Capital **and** Globex (tenant switcher demo) |
+
+Password-reset emails are caught by Mailpit — open its UI at **http://localhost:8025** to click the reset link.
+
+> **Production note:** set a strong `JWT_SECRET` (the dev fallback is insecure and logs a warning) and `SECURE_COOKIE=1` so the refresh cookie is sent only over HTTPS.
 
 ### Running the E2E against the live stack
 With Postgres up and `RECON_DEV=1 ... cargo run -p recon-api` serving on :8080:
