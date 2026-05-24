@@ -39,3 +39,15 @@ async fn tenant_isolation_on_users(pool: sqlx::PgPool) {
     assert_eq!(users.len(), 1);
     assert_eq!(store.list_breaks("tenant-a", &BreakFilter::default()).await.unwrap().len(), 0);
 }
+
+#[sqlx::test]
+async fn dashboard_counts_open_breaks(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    seed_two_tenants(&store).await;
+    sqlx::query("INSERT INTO cases(id,tenant_id,break_id,status) VALUES ('c1','tenant-a','b1','open')").execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO breaks(id,tenant_id,run_id,case_id,type,status,value_minor,currency,txn_ids,opened_at) VALUES ('b1','tenant-a','run-tenant-a','c1','unmatched','open',1000,'GBP','{}', now())").execute(&store.pool).await.unwrap();
+    let d = store.get_dashboard("tenant-a").await.unwrap();
+    assert_eq!(d.open_breaks, 1);
+    assert_eq!(d.value_at_risk_minor, 1000);
+    assert_eq!(d.match_rate_pct, 100.0);
+}
