@@ -134,3 +134,39 @@ async fn create_and_list_users(pool: sqlx::PgPool) {
         Some(UserRole::Approver)
     );
 }
+
+/// Fix 3: creating two users with the same email returns StoreError::Conflict.
+#[sqlx::test(migrations = "../../migrations")]
+async fn duplicate_email_returns_conflict(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t1','Acme','acme')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let store = Store::from_pool(pool);
+    store
+        .create_user_with_membership(
+            "u-dup-1",
+            "First",
+            "shared@acme.test",
+            "$argon2id$x",
+            "t1",
+            UserRole::Operator,
+        )
+        .await
+        .unwrap();
+    let err = store
+        .create_user_with_membership(
+            "u-dup-2",
+            "Second",
+            "shared@acme.test",
+            "$argon2id$x",
+            "t1",
+            UserRole::Operator,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, recon_store::StoreError::Conflict(_)),
+        "expected Conflict, got: {err:?}"
+    );
+}

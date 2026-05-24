@@ -18,3 +18,12 @@ export function useUsers() {
     queryFn: () => api.listUsers(tenantId),
   });
 }
+
+export function useMembers() {
+  const api = useApi();
+  const { tenantId } = useTenant();
+  return useQuery({
+    queryKey: ["members", tenantId],
+    queryFn: () => api.listMembers(tenantId),
+  });
+}

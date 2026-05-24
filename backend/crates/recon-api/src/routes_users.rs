@@ -18,6 +18,15 @@ pub async fn list_users(
     Ok(Json(state.store.list_users_in_tenant(&ctx.tenant_id).await?))
 }
 
+/// Non-privileged read: any authenticated tenant member can fetch the member list
+/// (used by the case timeline and assignee dropdown).
+pub async fn list_members(
+    ctx: AuthContext,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<recon_domain::User>>, ApiError> {
+    Ok(Json(state.store.list_users_in_tenant(&ctx.tenant_id).await?))
+}
+
 pub async fn create_user(
     ctx: AuthContext,
     State(state): State<AppState>,
@@ -50,6 +59,10 @@ pub async fn patch_user(
     Json(req): Json<PatchUserReq>,
 ) -> Result<axum::http::StatusCode, ApiError> {
     require_admin(&ctx)?;
+    // Verify the target user belongs to the admin's tenant before any mutation.
+    if state.store.role_in_tenant(&user_id, &ctx.tenant_id).await?.is_none() {
+        return Err(ApiError::NotFound());
+    }
     if let Some(role) = req.role {
         if state.store.update_membership_role(&user_id, &ctx.tenant_id, role).await? == 0 {
             return Err(ApiError::NotFound());

@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCase, useAppendCaseEvent } from "@/lib/hooks/use-case";
-import { useUsers } from "@/lib/hooks/use-tenants";
+import { useMembers } from "@/lib/hooks/use-tenants";
 import { useCurrentUserId } from "@/lib/providers/current-user-provider";
 import { useAuth } from "@/lib/auth/auth-provider";
 import { formatMoney } from "@/lib/domain/money";
@@ -59,7 +59,7 @@ export default function CaseDetailPage() {
   const router = useRouter();
 
   const { data, isLoading, isError, refetch } = useCase(caseId);
-  const { data: users = [] } = useUsers();
+  const { data: users = [] } = useMembers();
   const { currentUserId } = useCurrentUserId();
   const { user: authUser } = useAuth();
 

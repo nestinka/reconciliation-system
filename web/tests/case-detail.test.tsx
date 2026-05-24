@@ -74,6 +74,23 @@ describe("CaseDetailPage", () => {
     });
   });
 
+  // Fix 2: non-admin (operator) session should still resolve member names via listMembers.
+  it("renders actor and assignee names for a non-admin (operator) session", async () => {
+    // user-mia is an operator — was previously broken because the page called listUsers (admin-only)
+    renderWithProviders(<CaseDetailPage />, {
+      tenantId: "tenant-acme",
+      currentUserId: "user-mia",
+    });
+    await waitFor(() => {
+      // Actor names from the timeline should still resolve via listMembers
+      expect(screen.getAllByText("Ada").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Mia").length).toBeGreaterThan(0);
+    });
+    // The assignee dropdown should list member names
+    const assigneeLabel = screen.getByLabelText(/assign case to a team member/i);
+    expect(assigneeLabel).toBeInTheDocument();
+  });
+
   describe("when current user = user-mia (the maker)", () => {
     it("renders the ApprovalBar with Approve disabled (four-eyes)", async () => {
       renderWithProviders(<CaseDetailPage />, {

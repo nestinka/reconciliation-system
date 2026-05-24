@@ -339,7 +339,12 @@ impl Store {
             .bind(email)
             .execute(&mut *tx)
             .await
-            .map_err(StoreError::from)?;
+            .map_err(|e| match &e {
+                sqlx::Error::Database(db) if db.code().as_deref() == Some("23505") => {
+                    StoreError::Conflict("email already exists".into())
+                }
+                _ => StoreError::from(e),
+            })?;
         sqlx::query("INSERT INTO user_credentials(user_id,password_hash) VALUES ($1,$2)")
             .bind(id)
             .bind(password_hash)

@@ -72,6 +72,7 @@ export interface UpdateUserPatch {
 export interface ApiClient {
   listTenants(): Promise<Tenant[]>;
   listUsers(tenantId: string): Promise<User[]>;
+  listMembers(tenantId: string): Promise<User[]>;
   createUser(tenantId: string, input: CreateUserInput): Promise<User>;
   updateUser(tenantId: string, userId: string, patch: UpdateUserPatch): Promise<void>;
   deleteUser(tenantId: string, userId: string): Promise<void>;

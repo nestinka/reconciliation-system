@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let web_origin = std::env::var("WEB_ORIGIN").unwrap_or_else(|_| "http://localhost:3100".into());
 
     let cors = CorsLayer::new()
-        .allow_origin(web_origin.parse::<axum::http::HeaderValue>().unwrap())
+        .allow_origin(web_origin.parse::<axum::http::HeaderValue>().expect("WEB_ORIGIN must be a valid origin header value"))
         .allow_credentials(true)
         .allow_methods([
             axum::http::Method::GET,

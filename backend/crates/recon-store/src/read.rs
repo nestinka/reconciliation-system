@@ -42,10 +42,6 @@ impl Store {
         Ok(rows.into_iter().map(Into::into).collect())
     }
 
-    pub async fn list_users(&self, tenant_id: &str) -> Result<Vec<User>, StoreError> {
-        self.list_users_in_tenant(tenant_id).await
-    }
-
     pub async fn list_runs(
         &self,
         tenant_id: &str,

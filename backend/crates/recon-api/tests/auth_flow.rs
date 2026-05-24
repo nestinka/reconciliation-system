@@ -539,6 +539,109 @@ async fn admin_users_rbac(pool: sqlx::PgPool) {
     assert_eq!(del_status, StatusCode::NO_CONTENT, "delete user should be 204");
 }
 
+/// Fix 1: admin of tenant-acme cannot disable a user who is only in tenant-globex.
+#[sqlx::test]
+async fn patch_disable_cross_tenant_user_returns_404(pool: sqlx::PgPool) {
+    let (app, cfg) = auth_app(pool.clone()).await;
+
+    // Seed a globex-only user (not a member of tenant-acme).
+    sqlx::query(
+        "INSERT INTO users(id,name,email,disabled) VALUES ('user-globex-only','GlobexUser','globexuser@globex.test',false)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO user_credentials(user_id,password_hash) VALUES ('user-globex-only','$argon2id$dummy')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-globex-only','tenant-globex','operator')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // ada is admin of tenant-acme; globex-only user is NOT a member of tenant-acme.
+    let ada_bearer = bearer(&cfg, "user-ada", "tenant-acme", UserRole::Admin);
+
+    let status = patch_json_auth(
+        &app,
+        "/api/users/user-globex-only",
+        &ada_bearer,
+        serde_json::json!({ "disabled": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "cross-tenant disable should be 404");
+
+    // Verify the user remains enabled in the DB.
+    let disabled: bool = sqlx::query_scalar("SELECT disabled FROM users WHERE id='user-globex-only'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert!(!disabled, "globex-only user should still be enabled");
+}
+
+/// Fix 2: non-admin can call GET /api/members and get the tenant's user list.
+#[sqlx::test]
+async fn non_admin_can_list_members(pool: sqlx::PgPool) {
+    let (app, cfg) = auth_app(pool).await;
+
+    // mia is an operator in tenant-acme.
+    let mia_bearer = bearer(&cfg, "user-mia", "tenant-acme", UserRole::Operator);
+    let (status, body) = get_json_auth(&app, "/api/members", &mia_bearer).await;
+    assert_eq!(status, StatusCode::OK, "operator should get 200 on /api/members: {body}");
+    assert!(
+        body.as_array().map(|a| !a.is_empty()).unwrap_or(false),
+        "members list should be non-empty: {body}"
+    );
+
+    // /api/users is still admin-only.
+    let (status, _) = get_json_auth(&app, "/api/users", &mia_bearer).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "operator should get 403 on /api/users");
+}
+
+/// Fix 3: duplicate email on POST /api/users → 409.
+#[sqlx::test]
+async fn create_user_duplicate_email_returns_409(pool: sqlx::PgPool) {
+    let (app, cfg) = auth_app(pool).await;
+    let ada_bearer = bearer(&cfg, "user-ada", "tenant-acme", UserRole::Admin);
+
+    // First creation succeeds.
+    let (status, body, _) = post_json(
+        &app,
+        "/api/users",
+        Some(&ada_bearer),
+        None,
+        serde_json::json!({
+            "name": "Dup User",
+            "email": "dup@acme.test",
+            "role": "operator",
+            "password": "Password123!"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "first create should be 201: {body}");
+
+    // Second creation with same email → 409.
+    let (status, body, _) = post_json(
+        &app,
+        "/api/users",
+        Some(&ada_bearer),
+        None,
+        serde_json::json!({
+            "name": "Dup User 2",
+            "email": "dup@acme.test",
+            "role": "operator",
+            "password": "Password123!"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "duplicate email should be 409: {body}");
+}
+
 #[sqlx::test]
 async fn approval_requires_approver_role(pool: sqlx::PgPool) {
     let (app, cfg) = auth_app(pool).await;

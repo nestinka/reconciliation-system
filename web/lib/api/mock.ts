@@ -61,6 +61,14 @@ export class MockApiClient implements ApiClient {
     return deepClone(this.state.users);
   }
 
+  async listMembers(
+    tenantId: string // eslint-disable-line @typescript-eslint/no-unused-vars
+  ) {
+    await this.delay();
+    // Same fixture users — non-privileged read
+    return deepClone(this.state.users);
+  }
+
   async createUser(
     _tenantId: string,
     input: CreateUserInput

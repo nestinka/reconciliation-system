@@ -32,6 +32,8 @@ pub fn router(state: AppState) -> Router {
             axum::routing::patch(crate::routes_users::patch_user)
                 .delete(crate::routes_users::delete_user),
         )
+        // Non-privileged member list for timeline/assignee display.
+        .route("/api/members", get(crate::routes_users::list_members))
         .route("/api/dashboard", get(dashboard))
         .route("/api/runs", get(list_runs))
         .route("/api/runs/:run_id", get(get_run))

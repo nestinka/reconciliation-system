@@ -64,7 +64,7 @@ async fn tenant_isolation_on_runs(pool: sqlx::PgPool) {
 async fn tenant_isolation_on_users(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     seed_two_tenants(&store).await;
-    let users = store.list_users("tenant-a").await.unwrap();
+    let users = store.list_users_in_tenant("tenant-a").await.unwrap();
     assert_eq!(users.len(), 1);
     assert_eq!(
         store

@@ -55,6 +55,7 @@ export class HttpApiClient implements ApiClient {
 
   listTenants(): Promise<Tenant[]> { return this.req("/api/tenants", null); }
   listUsers(tenantId: string): Promise<User[]> { return this.req("/api/users", tenantId); }
+  listMembers(tenantId: string): Promise<User[]> { return this.req("/api/members", tenantId); }
   createUser(tenantId: string, input: CreateUserInput): Promise<User> {
     return this.req("/api/users", tenantId, { method: "POST", body: JSON.stringify(input) });
   }
