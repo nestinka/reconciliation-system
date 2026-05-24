@@ -1,5 +1,5 @@
 use crate::{Store, StoreError};
-use recon_domain::{Membership, User, UserRole};
+use recon_domain::{Membership, Tenant, User, UserRole};
 
 pub struct Credential {
     pub user_id: String,
@@ -391,5 +391,17 @@ impl Store {
                 .await
                 .map_err(StoreError::from)?;
         Ok(r.rows_affected())
+    }
+
+    /// Fetch a single tenant by id.
+    pub async fn get_tenant(&self, tenant_id: &str) -> Result<Option<Tenant>, StoreError> {
+        let row = sqlx::query_as::<_, (String, String, String)>(
+            "SELECT id, name, slug FROM tenants WHERE id = $1",
+        )
+        .bind(tenant_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(StoreError::from)?;
+        Ok(row.map(|(id, name, slug)| Tenant { id, name, slug }))
     }
 }

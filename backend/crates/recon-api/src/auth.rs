@@ -48,6 +48,7 @@ mod tests {
             store: recon_store::Store::from_pool(pool),
             cfg,
             mailer: Arc::new(recon_mail::LogMailer),
+            login_limiter: Arc::new(crate::ratelimit::IpLimiter::new(100.0, 1.0)),
         }
     }
 

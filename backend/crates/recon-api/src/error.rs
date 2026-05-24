@@ -11,13 +11,25 @@ pub struct ApiError {
     pub message: String,
 }
 
+#[allow(non_snake_case)]
 impl ApiError {
+    pub fn Unauthorized() -> Self {
+        Self { status: StatusCode::UNAUTHORIZED, code: "unauthorized", message: "unauthorized".into() }
+    }
+    pub fn Forbidden() -> Self {
+        Self { status: StatusCode::FORBIDDEN, code: "forbidden", message: "forbidden".into() }
+    }
+    pub fn NotFound() -> Self {
+        Self { status: StatusCode::NOT_FOUND, code: "not_found", message: "not found".into() }
+    }
+    pub fn Conflict() -> Self {
+        Self { status: StatusCode::CONFLICT, code: "conflict", message: "conflict".into() }
+    }
+    pub fn TooManyRequests() -> Self {
+        Self { status: StatusCode::TOO_MANY_REQUESTS, code: "too_many_requests", message: "too many requests".into() }
+    }
     pub fn unauthorized(m: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::UNAUTHORIZED,
-            code: "unauthorized",
-            message: m.into(),
-        }
+        Self { status: StatusCode::UNAUTHORIZED, code: "unauthorized", message: m.into() }
     }
 }
 

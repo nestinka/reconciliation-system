@@ -6,6 +6,7 @@ pub struct AppState {
     pub store: recon_store::Store,
     pub cfg: Arc<AuthConfig>,
     pub mailer: Arc<dyn Mailer>,
+    pub login_limiter: Arc<crate::ratelimit::IpLimiter>,
 }
 
 pub struct AuthConfig {

@@ -13,6 +13,10 @@ use serde_json::{json, Value};
 pub fn router(state: AppState) -> Router {
     let mut r = Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        // Public auth endpoints (no AuthContext extractor).
+        .route("/auth/login", post(crate::routes_auth::login))
+        .route("/auth/refresh", post(crate::routes_auth::refresh))
+        .route("/auth/logout", post(crate::routes_auth::logout))
         .route("/api/tenants", get(list_tenants))
         .route("/api/users", get(list_users))
         .route("/api/dashboard", get(dashboard))
