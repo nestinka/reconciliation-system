@@ -11,7 +11,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    Router::new()
+    let mut r = Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .route("/api/tenants", get(list_tenants))
         .route("/api/users", get(list_users))
@@ -21,8 +21,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/breaks", get(list_breaks))
         .route("/api/breaks/:break_id/assign", post(assign_break))
         .route("/api/cases/:case_id", get(get_case))
-        .route("/api/cases/:case_id/events", post(append_event))
-        .with_state(state)
+        .route("/api/cases/:case_id/events", post(append_event));
+    // Dev-only: reset the DB to seeded state (used by E2E). Gated by RECON_DEV.
+    if std::env::var("RECON_DEV").is_ok() {
+        r = r.route("/api/dev/reseed", post(dev_reseed));
+    }
+    r.with_state(state)
 }
 
 async fn list_tenants(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
@@ -138,4 +142,9 @@ async fn append_event(
     Json(ev): Json<recon_domain::NewCaseEvent>,
 ) -> Result<Json<Value>, ApiError> {
     Ok(Json(json!(s.store.append_case_event(&ctx.tenant_id, &case_id, ev).await?)))
+}
+
+async fn dev_reseed(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    s.store.seed().await?;
+    Ok(Json(json!({ "ok": true })))
 }
