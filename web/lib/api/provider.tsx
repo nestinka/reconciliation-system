@@ -2,11 +2,12 @@
 
 import { createContext, useContext, type ReactNode } from "react";
 import type { ApiClient } from "./client";
-import { MockApiClient } from "./mock";
+import { HttpApiClient } from "./http";
 
 const ApiContext = createContext<ApiClient | null>(null);
 
-const defaultClient = new MockApiClient();
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+const defaultClient: ApiClient = new HttpApiClient(API_BASE_URL);
 
 export function ApiProvider({
   client = defaultClient,
@@ -20,8 +21,6 @@ export function ApiProvider({
 
 export function useApi(): ApiClient {
   const ctx = useContext(ApiContext);
-  if (!ctx) {
-    throw new Error("useApi must be used inside <ApiProvider>");
-  }
+  if (!ctx) throw new Error("useApi must be used inside <ApiProvider>");
   return ctx;
 }
