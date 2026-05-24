@@ -138,19 +138,29 @@ async fn assign_break(
     Path(break_id): Path<String>,
     Json(body): Json<AssignBody>,
 ) -> Result<Json<Value>, ApiError> {
+    let actor = ctx
+        .user_id
+        .ok_or_else(|| ApiError::unauthorized("missing X-User-Id"))?;
     Ok(Json(json!(
         s.store
-            .assign_break(&ctx.tenant_id, &break_id, &body.user_id)
+            .assign_break(&ctx.tenant_id, &break_id, &body.user_id, &actor)
             .await?
     )))
 }
-
 async fn append_event(
     State(s): State<AppState>,
     ctx: AuthContext,
     Path(case_id): Path<String>,
     Json(ev): Json<recon_domain::NewCaseEvent>,
 ) -> Result<Json<Value>, ApiError> {
+    let actor = ctx
+        .user_id
+        .ok_or_else(|| ApiError::unauthorized("missing X-User-Id"))?;
+    // Bind the event's actor to the authenticated identity (defeats body-actor impersonation).
+    let ev = recon_domain::NewCaseEvent {
+        actor_id: actor,
+        ..ev
+    };
     Ok(Json(json!(
         s.store
             .append_case_event(&ctx.tenant_id, &case_id, ev)

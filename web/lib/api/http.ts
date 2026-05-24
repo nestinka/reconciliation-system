@@ -8,9 +8,17 @@ import type {
 export class HttpApiClient implements ApiClient {
   constructor(private readonly baseUrl: string) {}
 
+  private currentUserId(): string {
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("recon:currentUserId") ?? "user-mia";
+    }
+    return "user-mia";
+  }
+
   private async req<T>(path: string, tenantId: string | null, init?: RequestInit): Promise<T> {
     const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
     if (tenantId) headers["X-Tenant-Id"] = tenantId;
+    headers["X-User-Id"] = this.currentUserId();
     if (init?.body) headers["Content-Type"] = "application/json";
     const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
     if (!res.ok) {

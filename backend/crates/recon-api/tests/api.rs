@@ -74,10 +74,11 @@ async fn cross_tenant_case_is_not_found(pool: sqlx::PgPool) {
     assert_eq!(st, StatusCode::NOT_FOUND);
 }
 
-async fn post_json(
+async fn post_json_as(
     app: &axum::Router,
     uri: &str,
     tenant: &str,
+    user: &str,
     body: serde_json::Value,
 ) -> (StatusCode, serde_json::Value) {
     let res = app
@@ -87,6 +88,7 @@ async fn post_json(
                 .method("POST")
                 .uri(uri)
                 .header("x-tenant-id", tenant)
+                .header("x-user-id", user)
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .unwrap(),
@@ -107,19 +109,21 @@ async fn post_json(
 async fn maker_approve_forbidden_then_approver_resolves(pool: sqlx::PgPool) {
     let app = app(pool).await;
     // Mia (maker) is forbidden
-    let (st, _) = post_json(
+    let (st, _) = post_json_as(
         &app,
         "/api/cases/case-pending/events",
         "tenant-acme",
+        "user-mia",
         serde_json::json!({ "actorId": "user-mia", "kind": "approved", "payload": {} }),
     )
     .await;
     assert_eq!(st, StatusCode::FORBIDDEN);
     // Theo (approver) succeeds -> resolved
-    let (st, v) = post_json(
+    let (st, v) = post_json_as(
         &app,
         "/api/cases/case-pending/events",
         "tenant-acme",
+        "user-theo",
         serde_json::json!({ "actorId": "user-theo", "kind": "approved", "payload": {} }),
     )
     .await;
@@ -128,18 +132,46 @@ async fn maker_approve_forbidden_then_approver_resolves(pool: sqlx::PgPool) {
 }
 
 #[sqlx::test]
+async fn body_actor_cannot_impersonate_approver(pool: sqlx::PgPool) {
+    let app = app(pool).await;
+    // Caller is Mia (the maker) but lies in the body claiming to be Theo.
+    // The server binds the actor to X-User-Id, so four-eyes still blocks it.
+    let (st, _) = post_json_as(
+        &app,
+        "/api/cases/case-pending/events",
+        "tenant-acme",
+        "user-mia",
+        serde_json::json!({ "actorId": "user-theo", "kind": "approved", "payload": {} }),
+    )
+    .await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test]
+async fn write_requires_user_header(pool: sqlx::PgPool) {
+    let app = app(pool).await;
+    // No X-User-Id -> 401
+    let res = app.clone().oneshot(
+        axum::http::Request::builder().method("POST").uri("/api/cases/case-pending/events")
+            .header("x-tenant-id", "tenant-acme").header("content-type", "application/json")
+            .body(axum::body::Body::from(serde_json::json!({"actorId":"user-mia","kind":"comment","payload":{"text":"hi"}}).to_string())).unwrap()
+    ).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test]
 async fn assign_break_sets_assignee(pool: sqlx::PgPool) {
     let app = app(pool).await;
-    // find an open break id via the breaks list
     let (_, breaks) = get_json(&app, "/api/breaks?status=open", Some("tenant-acme")).await;
     let break_id = breaks.as_array().unwrap()[0]["id"]
         .as_str()
         .unwrap()
         .to_string();
-    let (st, v) = post_json(
+    let (st, v) = post_json_as(
         &app,
         &format!("/api/breaks/{break_id}/assign"),
         "tenant-acme",
+        "user-ada",
         serde_json::json!({ "userId": "user-sam" }),
     )
     .await;

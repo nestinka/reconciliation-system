@@ -6,6 +6,7 @@ use axum::http::request::Parts;
 /// This is the auth seam: a JWT validator will later populate the same struct.
 pub struct AuthContext {
     pub tenant_id: String,
+    pub user_id: Option<String>,
 }
 
 #[axum::async_trait]
@@ -19,7 +20,13 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthContext {
             .filter(|s| !s.is_empty())
             .ok_or_else(|| ApiError::unauthorized("missing X-Tenant-Id"))?
             .to_string();
-        Ok(AuthContext { tenant_id })
+        let user_id = parts
+            .headers
+            .get("x-user-id")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+        Ok(AuthContext { tenant_id, user_id })
     }
 }
 
@@ -48,5 +55,19 @@ mod tests {
         assert!(AuthContext::from_request_parts(&mut parts, &())
             .await
             .is_err());
+    }
+
+    #[tokio::test]
+    async fn extracts_user_id_when_present() {
+        let req = Request::builder()
+            .header("x-tenant-id", "t")
+            .header("x-user-id", "user-mia")
+            .body(())
+            .unwrap();
+        let (mut parts, _) = req.into_parts();
+        let ctx = AuthContext::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
+        assert_eq!(ctx.user_id.as_deref(), Some("user-mia"));
     }
 }
