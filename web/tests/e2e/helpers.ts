@@ -23,7 +23,14 @@ export async function loginViaUI(
   email: string,
   password: string
 ): Promise<void> {
+  // Clear any stale session state from a previous test so we always land on the
+  // login form rather than being auto-redirected or stuck in a loading state.
+  await page.context().clearCookies();
   await page.goto("/login");
+
+  // Wait for the login form to be interactive (auth "loading" resolves to "unauthenticated")
+  await expect(page.getByRole("button", { name: /sign in/i })).toBeVisible({ timeout: 10_000 });
+
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /sign in/i }).click();

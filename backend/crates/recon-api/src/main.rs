@@ -63,7 +63,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(recon_mail::LogMailer)
     };
 
-    let login_limiter = Arc::new(IpLimiter::new(10.0, 10.0 / 60.0));
+    // In RECON_DEV mode use a very large bucket so E2E test suites aren't
+    // blocked by the IP rate limiter when running many login flows in quick
+    // succession.  Production keeps the tight 10-req/min limit.
+    let login_limiter = if std::env::var("RECON_DEV").is_ok() {
+        Arc::new(IpLimiter::new(1000.0, 1000.0))
+    } else {
+        Arc::new(IpLimiter::new(10.0, 10.0 / 60.0))
+    };
 
     let app = router(AppState {
         store,
