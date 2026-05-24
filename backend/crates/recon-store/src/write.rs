@@ -28,9 +28,9 @@ impl Store {
         let now = OffsetDateTime::now_utc();
         let mut tx = self.pool.begin().await?;
 
-        // The assignee must belong to the caller's tenant.
+        // The assignee must belong to the caller's tenant (via memberships).
         let assignee_ok: Option<String> =
-            sqlx::query_scalar("SELECT id FROM users WHERE id = $1 AND tenant_id = $2")
+            sqlx::query_scalar("SELECT user_id FROM memberships WHERE user_id = $1 AND tenant_id = $2")
                 .bind(assignee_id)
                 .bind(tenant_id)
                 .fetch_optional(&mut *tx)
@@ -121,7 +121,9 @@ impl Store {
                     return Err(StoreError::Conflict("case is not pending approval".into()));
                 }
                 let actor: Option<crate::rows::UserRow> = sqlx::query_as(
-                    "SELECT id, name, role FROM users WHERE id = $1 AND tenant_id = $2",
+                    "SELECT u.id, u.name, u.email, u.disabled, m.role \
+                     FROM users u JOIN memberships m ON m.user_id = u.id \
+                     WHERE u.id = $1 AND m.tenant_id = $2",
                 )
                 .bind(&ev.actor_id)
                 .bind(tenant_id)

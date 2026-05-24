@@ -21,7 +21,13 @@ async fn seed_two_tenants(store: &Store) {
             .execute(&store.pool)
             .await
             .unwrap();
-        sqlx::query("INSERT INTO users(id,tenant_id,name,role) VALUES ($1,$2,'U','operator')")
+        sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ($1,'U',$2||'@test.example',false)")
+            .bind(format!("u-{t}"))
+            .bind(t)
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ($1,$2,'operator')")
             .bind(format!("u-{t}"))
             .bind(t)
             .execute(&store.pool)

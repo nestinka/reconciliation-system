@@ -43,12 +43,7 @@ impl Store {
     }
 
     pub async fn list_users(&self, tenant_id: &str) -> Result<Vec<User>, StoreError> {
-        let rows: Vec<UserRow> =
-            sqlx::query_as("SELECT id, name, role FROM users WHERE tenant_id = $1 ORDER BY name")
-                .bind(tenant_id)
-                .fetch_all(&self.pool)
-                .await?;
-        Ok(rows.into_iter().map(Into::into).collect())
+        self.list_users_in_tenant(tenant_id).await
     }
 
     pub async fn list_runs(

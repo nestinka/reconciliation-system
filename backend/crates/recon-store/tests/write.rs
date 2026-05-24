@@ -7,8 +7,17 @@ async fn seed_pending(store: &Store) {
         .execute(&store.pool)
         .await
         .unwrap();
-    for (id, role) in [("user-mia", "operator"), ("user-theo", "approver")] {
-        sqlx::query("INSERT INTO users(id,tenant_id,name,role) VALUES ($1,'t',$1,$2)")
+    for (id, email, role) in [
+        ("user-mia", "mia@test.example", "operator"),
+        ("user-theo", "theo@test.example", "approver"),
+    ] {
+        sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ($1,$1,$2,false)")
+            .bind(id)
+            .bind(email)
+            .execute(&store.pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ($1,'t',$2)")
             .bind(id)
             .bind(role)
             .execute(&store.pool)

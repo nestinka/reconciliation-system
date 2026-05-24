@@ -1418,6 +1418,7 @@ dependencies = [
 name = "recon-store"
 version = "0.1.0"
 dependencies = [
+ "recon-auth",
  "recon-domain",
  "recon-matching",
  "serde_json",

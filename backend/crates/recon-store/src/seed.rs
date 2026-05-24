@@ -1,4 +1,5 @@
 use crate::{Store, StoreError};
+use recon_auth::password::hash_password;
 use recon_domain::CanonicalTransaction;
 use recon_matching::{reconcile, MatchConfig};
 
@@ -17,6 +18,10 @@ impl Store {
             "reconciliation_runs",
             "canonical_transactions",
             "sources",
+            "refresh_tokens",
+            "password_reset_tokens",
+            "user_credentials",
+            "memberships",
             "users",
             "tenants",
         ] {
@@ -37,34 +42,44 @@ impl Store {
                 .execute(&mut *tx)
                 .await?;
         }
-        // Users (acme uses the canonical fixture ids; globex gets its own)
-        for (id, name, role) in [
-            ("user-mia", "Mia", "operator"),
-            ("user-sam", "Sam", "operator"),
-            ("user-theo", "Theo", "approver"),
-            ("user-ada", "Ada", "admin"),
+        // Users — global identities with per-tenant memberships.
+        // dev login: <email> / Password123!
+        let pw_hash = hash_password("Password123!").map_err(|e| {
+            StoreError::Db(sqlx::Error::Protocol(format!("hash_password failed: {e}")))
+        })?;
+
+        // (id, name, email)
+        for (id, name, email) in [
+            ("user-mia", "Mia", "mia@acme.test"),
+            ("user-theo", "Theo", "theo@acme.test"),
+            ("user-ada", "Ada", "ada@acme.test"),
         ] {
-            sqlx::query(
-                "INSERT INTO users(id,tenant_id,name,role) VALUES ($1,'tenant-acme',$2,$3)",
-            )
-            .bind(id)
-            .bind(name)
-            .bind(role)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ($1,$2,$3,false)")
+                .bind(id)
+                .bind(name)
+                .bind(email)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("INSERT INTO user_credentials(user_id,password_hash) VALUES ($1,$2)")
+                .bind(id)
+                .bind(&pw_hash)
+                .execute(&mut *tx)
+                .await?;
         }
-        for (id, name, role) in [
-            ("user-glo-op", "Nia", "operator"),
-            ("user-glo-ap", "Omar", "approver"),
+
+        // Memberships: (user_id, tenant_id, role)
+        for (uid, tid, role) in [
+            ("user-mia", "tenant-acme", "operator"),
+            ("user-theo", "tenant-acme", "approver"),
+            ("user-ada", "tenant-acme", "admin"),
+            ("user-ada", "tenant-globex", "admin"),
         ] {
-            sqlx::query(
-                "INSERT INTO users(id,tenant_id,name,role) VALUES ($1,'tenant-globex',$2,$3)",
-            )
-            .bind(id)
-            .bind(name)
-            .bind(role)
-            .execute(&mut *tx)
-            .await?;
+            sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ($1,$2,$3)")
+                .bind(uid)
+                .bind(tid)
+                .bind(role)
+                .execute(&mut *tx)
+                .await?;
         }
         // Sources
         for (id, tid, kind, name, cur) in [

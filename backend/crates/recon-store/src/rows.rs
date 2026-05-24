@@ -86,6 +86,8 @@ impl From<TenantRow> for Tenant {
 pub struct UserRow {
     pub id: String,
     pub name: String,
+    pub email: String,
+    pub disabled: bool,
     pub role: String,
 }
 impl From<UserRow> for User {
@@ -93,6 +95,8 @@ impl From<UserRow> for User {
         User {
             id: r.id,
             name: r.name,
+            email: r.email,
+            disabled: r.disabled,
             role: parse_role(&r.role),
         }
     }

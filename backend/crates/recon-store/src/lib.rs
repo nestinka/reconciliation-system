@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod dashboard;
 pub mod error;
 pub mod read;
