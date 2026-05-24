@@ -4,8 +4,6 @@ use axum::Json;
 use recon_store::StoreError;
 use serde_json::json;
 
-// used by routes and auth extractor in a later task
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct ApiError {
     pub status: StatusCode,
@@ -13,8 +11,6 @@ pub struct ApiError {
     pub message: String,
 }
 
-// used by routes in a later task
-#[allow(dead_code)]
 impl ApiError {
     pub fn unauthorized(m: impl Into<String>) -> Self {
         Self {

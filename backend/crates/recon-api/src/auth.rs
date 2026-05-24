@@ -4,8 +4,6 @@ use crate::error::ApiError;
 
 /// Establishes the caller's tenant from the X-Tenant-Id header.
 /// This is the auth seam: a JWT validator will later populate the same struct.
-// used by routes in a later task
-#[allow(dead_code)]
 pub struct AuthContext {
     pub tenant_id: String,
 }
