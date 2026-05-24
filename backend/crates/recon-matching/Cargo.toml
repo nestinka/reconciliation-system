@@ -2,3 +2,9 @@
 name = "recon-matching"
 edition.workspace = true
 version.workspace = true
+
+[dependencies]
+recon-domain = { path = "../recon-domain" }
+
+[dev-dependencies]
+proptest = { workspace = true }
