@@ -1,0 +1,50 @@
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use crate::error::ApiError;
+
+/// Establishes the caller's tenant from the X-Tenant-Id header.
+/// This is the auth seam: a JWT validator will later populate the same struct.
+// used by routes in a later task
+#[allow(dead_code)]
+pub struct AuthContext {
+    pub tenant_id: String,
+}
+
+#[axum::async_trait]
+impl<S: Send + Sync> FromRequestParts<S> for AuthContext {
+    type Rejection = ApiError;
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let tenant_id = parts
+            .headers
+            .get("x-tenant-id")
+            .and_then(|v| v.to_str().ok())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| ApiError::unauthorized("missing X-Tenant-Id"))?
+            .to_string();
+        Ok(AuthContext { tenant_id })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::Request;
+
+    #[tokio::test]
+    async fn extracts_tenant() {
+        let req = Request::builder()
+            .header("x-tenant-id", "tenant-acme")
+            .body(())
+            .unwrap();
+        let (mut parts, _) = req.into_parts();
+        let ctx = AuthContext::from_request_parts(&mut parts, &()).await.unwrap();
+        assert_eq!(ctx.tenant_id, "tenant-acme");
+    }
+
+    #[tokio::test]
+    async fn missing_header_is_unauthorized() {
+        let req = Request::builder().body(()).unwrap();
+        let (mut parts, _) = req.into_parts();
+        assert!(AuthContext::from_request_parts(&mut parts, &()).await.is_err());
+    }
+}
