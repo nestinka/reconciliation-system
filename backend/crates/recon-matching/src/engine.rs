@@ -1,6 +1,6 @@
-use recon_domain::{BreakType, CanonicalTransaction, MatchType, RunStats};
 use crate::config::MatchConfig;
 use crate::score::score_pair;
+use recon_domain::{BreakType, CanonicalTransaction, MatchType, RunStats};
 
 /// A match decision produced by the engine (no DB identity yet).
 #[derive(Debug, Clone, PartialEq)]
@@ -27,7 +27,11 @@ pub struct RunResult {
 }
 
 /// Deterministic, replayable reconciliation of source A against source B.
-pub fn reconcile(a: &[CanonicalTransaction], b: &[CanonicalTransaction], cfg: &MatchConfig) -> RunResult {
+pub fn reconcile(
+    a: &[CanonicalTransaction],
+    b: &[CanonicalTransaction],
+    cfg: &MatchConfig,
+) -> RunResult {
     let mut a: Vec<&CanonicalTransaction> = a.iter().collect();
     let mut b: Vec<&CanonicalTransaction> = b.iter().collect();
     a.sort_by(|x, y| x.id.cmp(&y.id));
@@ -41,10 +45,14 @@ pub fn reconcile(a: &[CanonicalTransaction], b: &[CanonicalTransaction], cfg: &M
     detect_duplicates(&b, &mut consumed_b, &mut decisions);
 
     for (i, ta) in a.iter().enumerate() {
-        if consumed_a[i] { continue; }
+        if consumed_a[i] {
+            continue;
+        }
         let mut best: Option<(usize, f64)> = None;
         for (j, tb) in b.iter().enumerate() {
-            if consumed_b[j] { continue; }
+            if consumed_b[j] {
+                continue;
+            }
             let s = score_pair(ta, tb);
             if s >= cfg.fuzzy_threshold && best.is_none_or(|(_, bs)| s > bs) {
                 best = Some((j, s));
@@ -55,7 +63,11 @@ pub fn reconcile(a: &[CanonicalTransaction], b: &[CanonicalTransaction], cfg: &M
             consumed_b[j] = true;
             let exact = (ta.amount_minor - b[j].amount_minor).abs() == 0
                 && ta.value_date == b[j].value_date;
-            let match_type = if exact && s >= 0.999 { MatchType::Matched } else { MatchType::Partial };
+            let match_type = if exact && s >= 0.999 {
+                MatchType::Matched
+            } else {
+                MatchType::Partial
+            };
             decisions.push(DecisionDraft {
                 match_type,
                 txn_ids: vec![ta.id.clone(), b[j].id.clone()],
@@ -88,17 +100,32 @@ pub fn reconcile(a: &[CanonicalTransaction], b: &[CanonicalTransaction], cfg: &M
     breaks.sort_by(|x, y| x.txn_ids.cmp(&y.txn_ids));
 
     let stats = compute_stats(&decisions, &breaks);
-    RunResult { decisions, breaks, stats }
+    RunResult {
+        decisions,
+        breaks,
+        stats,
+    }
 }
 
-fn detect_duplicates(txns: &[&CanonicalTransaction], consumed: &mut [bool], out: &mut Vec<DecisionDraft>) {
+fn detect_duplicates(
+    txns: &[&CanonicalTransaction],
+    consumed: &mut [bool],
+    out: &mut Vec<DecisionDraft>,
+) {
     for i in 0..txns.len() {
-        if consumed[i] { continue; }
+        if consumed[i] {
+            continue;
+        }
         for j in (i + 1)..txns.len() {
-            if consumed[j] { continue; }
+            if consumed[j] {
+                continue;
+            }
             let (x, y) = (txns[i], txns[j]);
             if x.amount_minor == y.amount_minor
-                && x.external_ref.split('-').take(2).eq(y.external_ref.split('-').take(2))
+                && x.external_ref
+                    .split('-')
+                    .take(2)
+                    .eq(y.external_ref.split('-').take(2))
                 && x.value_date == y.value_date
             {
                 consumed[i] = true;
@@ -136,25 +163,40 @@ fn compute_stats(decisions: &[DecisionDraft], breaks: &[BreakDraft]) -> RunStats
 #[cfg(test)]
 mod tests {
     use super::*;
-    use recon_domain::{CanonicalTransaction, Direction, MatchType, BreakType};
     use crate::MatchConfig;
+    use recon_domain::{BreakType, CanonicalTransaction, Direction, MatchType};
 
     fn txn(id: &str, src: &str, amt: i64, date: &str, eref: &str) -> CanonicalTransaction {
         CanonicalTransaction {
-            id: id.into(), tenant_id: "t".into(), source_id: src.into(),
-            external_ref: eref.into(), value_date: date.into(),
-            posted_at: format!("{date}T00:00:00Z"), amount_minor: amt,
-            currency: "GBP".into(), direction: Direction::Debit, counterparty: None,
+            id: id.into(),
+            tenant_id: "t".into(),
+            source_id: src.into(),
+            external_ref: eref.into(),
+            value_date: date.into(),
+            posted_at: format!("{date}T00:00:00Z"),
+            amount_minor: amt,
+            currency: "GBP".into(),
+            direction: Direction::Debit,
+            counterparty: None,
             description: "d".into(),
         }
     }
 
     #[test]
     fn exact_pair_matches_unmatched_breaks() {
-        let a = vec![ txn("a1","A",1000,"2026-05-01","R1"), txn("a2","A",2000,"2026-05-02","R2") ];
-        let b = vec![ txn("b1","B",1000,"2026-05-01","R1") ];
+        let a = vec![
+            txn("a1", "A", 1000, "2026-05-01", "R1"),
+            txn("a2", "A", 2000, "2026-05-02", "R2"),
+        ];
+        let b = vec![txn("b1", "B", 1000, "2026-05-01", "R1")];
         let r = reconcile(&a, &b, &MatchConfig::v1());
-        assert_eq!(r.decisions.iter().filter(|d| d.match_type == MatchType::Matched).count(), 1);
+        assert_eq!(
+            r.decisions
+                .iter()
+                .filter(|d| d.match_type == MatchType::Matched)
+                .count(),
+            1
+        );
         assert_eq!(r.breaks.len(), 1);
         assert_eq!(r.breaks[0].txn_ids, vec!["a2".to_string()]);
         assert_eq!(r.breaks[0].break_type, BreakType::Unmatched);
@@ -162,8 +204,8 @@ mod tests {
 
     #[test]
     fn within_tolerance_is_partial() {
-        let a = vec![ txn("a1","A",1000,"2026-05-01","R1") ];
-        let b = vec![ txn("b1","B",1300,"2026-05-02","R9") ];
+        let a = vec![txn("a1", "A", 1000, "2026-05-01", "R1")];
+        let b = vec![txn("b1", "B", 1300, "2026-05-02", "R9")];
         let r = reconcile(&a, &b, &MatchConfig::v1());
         assert_eq!(r.decisions.len(), 1);
         assert_eq!(r.decisions[0].match_type, MatchType::Partial);
@@ -171,16 +213,25 @@ mod tests {
 
     #[test]
     fn duplicate_within_source_detected() {
-        let a = vec![ txn("a1","A",950,"2026-05-10","D1"), txn("a2","A",950,"2026-05-10","D1") ];
+        let a = vec![
+            txn("a1", "A", 950, "2026-05-10", "D1"),
+            txn("a2", "A", 950, "2026-05-10", "D1"),
+        ];
         let b: Vec<CanonicalTransaction> = vec![];
         let r = reconcile(&a, &b, &MatchConfig::v1());
-        assert!(r.decisions.iter().any(|d| d.match_type == MatchType::Duplicate));
+        assert!(r
+            .decisions
+            .iter()
+            .any(|d| d.match_type == MatchType::Duplicate));
     }
 
     #[test]
     fn stats_are_consistent() {
-        let a = vec![ txn("a1","A",1000,"2026-05-01","R1"), txn("a2","A",5,"2026-05-01","X") ];
-        let b = vec![ txn("b1","B",1000,"2026-05-01","R1") ];
+        let a = vec![
+            txn("a1", "A", 1000, "2026-05-01", "R1"),
+            txn("a2", "A", 5, "2026-05-01", "X"),
+        ];
+        let b = vec![txn("b1", "B", 1000, "2026-05-01", "R1")];
         let r = reconcile(&a, &b, &MatchConfig::v1());
         assert_eq!(r.stats.matched, 1);
         assert_eq!(r.stats.break_count, r.breaks.len() as i64);

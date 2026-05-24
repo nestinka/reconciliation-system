@@ -1,14 +1,14 @@
+use crate::auth::AuthContext;
+use crate::dto::*;
+use crate::error::ApiError;
+use crate::state::AppState;
 use axum::{
     extract::{Path, Query, State},
     routing::{get, post},
     Json, Router,
 };
-use serde_json::{json, Value};
 use recon_store::read::{BreakFilter, RunFilter};
-use crate::auth::AuthContext;
-use crate::dto::*;
-use crate::error::ApiError;
-use crate::state::AppState;
+use serde_json::{json, Value};
 
 pub fn router(state: AppState) -> Router {
     let mut r = Router::new()
@@ -71,8 +71,11 @@ async fn get_run(
     Path(run_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let d = s.store.get_run(&ctx.tenant_id, &run_id).await?;
-    let txn_map: serde_json::Map<String, Value> =
-        d.transactions.iter().map(|t| (t.id.clone(), json!(t))).collect();
+    let txn_map: serde_json::Map<String, Value> = d
+        .transactions
+        .iter()
+        .map(|t| (t.id.clone(), json!(t)))
+        .collect();
     Ok(Json(json!({
         "run": d.run,
         "transactionsById": txn_map,
@@ -103,8 +106,11 @@ async fn get_case(
     Path(case_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let b = s.store.get_case(&ctx.tenant_id, &case_id).await?;
-    let txn_map: serde_json::Map<String, Value> =
-        b.transactions.iter().map(|t| (t.id.clone(), json!(t))).collect();
+    let txn_map: serde_json::Map<String, Value> = b
+        .transactions
+        .iter()
+        .map(|t| (t.id.clone(), json!(t)))
+        .collect();
     let suggestions: Vec<Value> = b
         .suggestions
         .iter()
@@ -132,7 +138,11 @@ async fn assign_break(
     Path(break_id): Path<String>,
     Json(body): Json<AssignBody>,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(json!(s.store.assign_break(&ctx.tenant_id, &break_id, &body.user_id).await?)))
+    Ok(Json(json!(
+        s.store
+            .assign_break(&ctx.tenant_id, &break_id, &body.user_id)
+            .await?
+    )))
 }
 
 async fn append_event(
@@ -141,7 +151,11 @@ async fn append_event(
     Path(case_id): Path<String>,
     Json(ev): Json<recon_domain::NewCaseEvent>,
 ) -> Result<Json<Value>, ApiError> {
-    Ok(Json(json!(s.store.append_case_event(&ctx.tenant_id, &case_id, ev).await?)))
+    Ok(Json(json!(
+        s.store
+            .append_case_event(&ctx.tenant_id, &case_id, ev)
+            .await?
+    )))
 }
 
 async fn dev_reseed(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {

@@ -1,6 +1,6 @@
+use crate::error::ApiError;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
-use crate::error::ApiError;
 
 /// Establishes the caller's tenant from the X-Tenant-Id header.
 /// This is the auth seam: a JWT validator will later populate the same struct.
@@ -35,7 +35,9 @@ mod tests {
             .body(())
             .unwrap();
         let (mut parts, _) = req.into_parts();
-        let ctx = AuthContext::from_request_parts(&mut parts, &()).await.unwrap();
+        let ctx = AuthContext::from_request_parts(&mut parts, &())
+            .await
+            .unwrap();
         assert_eq!(ctx.tenant_id, "tenant-acme");
     }
 
@@ -43,6 +45,8 @@ mod tests {
     async fn missing_header_is_unauthorized() {
         let req = Request::builder().body(()).unwrap();
         let (mut parts, _) = req.into_parts();
-        assert!(AuthContext::from_request_parts(&mut parts, &()).await.is_err());
+        assert!(AuthContext::from_request_parts(&mut parts, &())
+            .await
+            .is_err());
     }
 }

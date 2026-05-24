@@ -8,8 +8,10 @@ use tower_http::trace::TraceLayer;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .json()
-        .with_env_filter(tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "recon_api=debug,info".into()))
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "recon_api=debug,info".into()),
+        )
         .init();
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL");
@@ -22,7 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         Some("serve") | None => {}
-        Some(other) => { eprintln!("unknown command: {other}; use serve|seed"); std::process::exit(2); }
+        Some(other) => {
+            eprintln!("unknown command: {other}; use serve|seed");
+            std::process::exit(2);
+        }
     }
 
     store.migrate().await?;

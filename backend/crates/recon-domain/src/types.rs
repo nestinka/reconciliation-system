@@ -2,47 +2,89 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum SourceKind { Bank, Ledger, CrossSystem }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Direction { Debit, Credit }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RunStatus { Running, Completed, Failed }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum MatchType { Matched, Partial, Duplicate }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakType { Unmatched, Partial, Duplicate, Break }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BreakStatus { Open, Investigating, PendingApproval, Resolved, WrittenOff }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AgeingBucket {
-    #[serde(rename = "0-1d")] ZeroToOne,
-    #[serde(rename = "2-7d")] TwoToSeven,
-    #[serde(rename = "8-30d")] EightToThirty,
-    #[serde(rename = "30d+")] ThirtyPlus,
+pub enum SourceKind {
+    Bank,
+    Ledger,
+    CrossSystem,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum UserRole { Operator, Approver, Admin }
+pub enum Direction {
+    Debit,
+    Credit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunStatus {
+    Running,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchType {
+    Matched,
+    Partial,
+    Duplicate,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BreakType {
+    Unmatched,
+    Partial,
+    Duplicate,
+    Break,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BreakStatus {
+    Open,
+    Investigating,
+    PendingApproval,
+    Resolved,
+    WrittenOff,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgeingBucket {
+    #[serde(rename = "0-1d")]
+    ZeroToOne,
+    #[serde(rename = "2-7d")]
+    TwoToSeven,
+    #[serde(rename = "8-30d")]
+    EightToThirty,
+    #[serde(rename = "30d+")]
+    ThirtyPlus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UserRole {
+    Operator,
+    Approver,
+    Admin,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Tenant { pub id: String, pub name: String, pub slug: String }
+pub struct Tenant {
+    pub id: String,
+    pub name: String,
+    pub slug: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct User { pub id: String, pub name: String, pub role: UserRole }
+pub struct User {
+    pub id: String,
+    pub name: String,
+    pub role: UserRole,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,8 +103,8 @@ pub struct CanonicalTransaction {
     pub tenant_id: String,
     pub source_id: String,
     pub external_ref: String,
-    pub value_date: String,   // "YYYY-MM-DD"
-    pub posted_at: String,    // RFC3339
+    pub value_date: String, // "YYYY-MM-DD"
+    pub posted_at: String,  // RFC3339
     pub amount_minor: i64,
     pub currency: String,
     pub direction: Direction,
@@ -151,9 +193,18 @@ mod tests {
 
     #[test]
     fn break_status_and_ageing_bucket_wire_values() {
-        assert_eq!(serde_json::to_value(BreakStatus::PendingApproval).unwrap(), "pending_approval");
-        assert_eq!(serde_json::to_value(AgeingBucket::EightToThirty).unwrap(), "8-30d");
+        assert_eq!(
+            serde_json::to_value(BreakStatus::PendingApproval).unwrap(),
+            "pending_approval"
+        );
+        assert_eq!(
+            serde_json::to_value(AgeingBucket::EightToThirty).unwrap(),
+            "8-30d"
+        );
         assert_eq!(serde_json::to_value(BreakType::Break).unwrap(), "break");
-        assert_eq!(serde_json::to_value(MatchType::Duplicate).unwrap(), "duplicate");
+        assert_eq!(
+            serde_json::to_value(MatchType::Duplicate).unwrap(),
+            "duplicate"
+        );
     }
 }

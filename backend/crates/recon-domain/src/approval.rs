@@ -1,6 +1,6 @@
-use thiserror::Error;
-use crate::events::{CaseEventBody, Case};
+use crate::events::{Case, CaseEventBody};
 use crate::types::{BreakStatus, User, UserRole};
+use thiserror::Error;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ApprovalError {
@@ -22,10 +22,14 @@ pub fn can_approve(c: &Case, user: &User) -> Result<(), ApprovalError> {
     if !matches!(user.role, UserRole::Approver | UserRole::Admin) {
         return Err(ApprovalError::Role);
     }
-    let last_request = c.events.iter().rev().find(|e| {
-        matches!(e.body, CaseEventBody::ApprovalRequested { .. })
-    });
-    let Some(req) = last_request else { return Err(ApprovalError::NoRequest) };
+    let last_request = c
+        .events
+        .iter()
+        .rev()
+        .find(|e| matches!(e.body, CaseEventBody::ApprovalRequested { .. }));
+    let Some(req) = last_request else {
+        return Err(ApprovalError::NoRequest);
+    };
     if req.actor_id == user.id {
         return Err(ApprovalError::Maker);
     }
@@ -38,13 +42,31 @@ mod tests {
     use crate::*;
 
     fn case_with(status: BreakStatus, events: Vec<CaseEvent>) -> Case {
-        Case { id: "c".into(), break_id: "b".into(), assignee_id: None, status, events }
+        Case {
+            id: "c".into(),
+            break_id: "b".into(),
+            assignee_id: None,
+            status,
+            events,
+        }
     }
     fn req(actor: &str) -> CaseEvent {
-        CaseEvent { id: "r".into(), actor_id: actor.into(), at: "t".into(),
-            body: CaseEventBody::ApprovalRequested { resolution: Resolution::WriteOff } }
+        CaseEvent {
+            id: "r".into(),
+            actor_id: actor.into(),
+            at: "t".into(),
+            body: CaseEventBody::ApprovalRequested {
+                resolution: Resolution::WriteOff,
+            },
+        }
     }
-    fn user(id: &str, role: UserRole) -> User { User { id: id.into(), name: id.into(), role } }
+    fn user(id: &str, role: UserRole) -> User {
+        User {
+            id: id.into(),
+            name: id.into(),
+            role,
+        }
+    }
 
     #[test]
     fn maker_cannot_approve_own_proposal() {
@@ -66,11 +88,17 @@ mod tests {
     #[test]
     fn not_pending_is_rejected() {
         let c = case_with(BreakStatus::Open, vec![req("user-mia")]);
-        assert!(matches!(can_approve(&c, &user("user-theo", UserRole::Approver)), Err(ApprovalError::NotPending)));
+        assert!(matches!(
+            can_approve(&c, &user("user-theo", UserRole::Approver)),
+            Err(ApprovalError::NotPending)
+        ));
     }
     #[test]
     fn missing_request_fails_closed() {
         let c = case_with(BreakStatus::PendingApproval, vec![]);
-        assert!(matches!(can_approve(&c, &user("user-theo", UserRole::Approver)), Err(ApprovalError::NoRequest)));
+        assert!(matches!(
+            can_approve(&c, &user("user-theo", UserRole::Approver)),
+            Err(ApprovalError::NoRequest)
+        ));
     }
 }

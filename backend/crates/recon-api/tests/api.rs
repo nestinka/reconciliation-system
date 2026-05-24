@@ -74,15 +74,32 @@ async fn cross_tenant_case_is_not_found(pool: sqlx::PgPool) {
     assert_eq!(st, StatusCode::NOT_FOUND);
 }
 
-async fn post_json(app: &axum::Router, uri: &str, tenant: &str, body: serde_json::Value) -> (StatusCode, serde_json::Value) {
-    let res = app.clone().oneshot(
-        Request::builder().method("POST").uri(uri)
-            .header("x-tenant-id", tenant).header("content-type", "application/json")
-            .body(Body::from(body.to_string())).unwrap()
-    ).await.unwrap();
+async fn post_json(
+    app: &axum::Router,
+    uri: &str,
+    tenant: &str,
+    body: serde_json::Value,
+) -> (StatusCode, serde_json::Value) {
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("x-tenant-id", tenant)
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     let status = res.status();
     let bytes = res.into_body().collect().await.unwrap().to_bytes();
-    let v = if bytes.is_empty() { serde_json::Value::Null } else { serde_json::from_slice(&bytes).unwrap() };
+    let v = if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap()
+    };
     (status, v)
 }
 
@@ -90,12 +107,22 @@ async fn post_json(app: &axum::Router, uri: &str, tenant: &str, body: serde_json
 async fn maker_approve_forbidden_then_approver_resolves(pool: sqlx::PgPool) {
     let app = app(pool).await;
     // Mia (maker) is forbidden
-    let (st, _) = post_json(&app, "/api/cases/case-pending/events", "tenant-acme",
-        serde_json::json!({ "actorId": "user-mia", "kind": "approved", "payload": {} })).await;
+    let (st, _) = post_json(
+        &app,
+        "/api/cases/case-pending/events",
+        "tenant-acme",
+        serde_json::json!({ "actorId": "user-mia", "kind": "approved", "payload": {} }),
+    )
+    .await;
     assert_eq!(st, StatusCode::FORBIDDEN);
     // Theo (approver) succeeds -> resolved
-    let (st, v) = post_json(&app, "/api/cases/case-pending/events", "tenant-acme",
-        serde_json::json!({ "actorId": "user-theo", "kind": "approved", "payload": {} })).await;
+    let (st, v) = post_json(
+        &app,
+        "/api/cases/case-pending/events",
+        "tenant-acme",
+        serde_json::json!({ "actorId": "user-theo", "kind": "approved", "payload": {} }),
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["status"], "resolved");
 }
@@ -105,9 +132,17 @@ async fn assign_break_sets_assignee(pool: sqlx::PgPool) {
     let app = app(pool).await;
     // find an open break id via the breaks list
     let (_, breaks) = get_json(&app, "/api/breaks?status=open", Some("tenant-acme")).await;
-    let break_id = breaks.as_array().unwrap()[0]["id"].as_str().unwrap().to_string();
-    let (st, v) = post_json(&app, &format!("/api/breaks/{break_id}/assign"), "tenant-acme",
-        serde_json::json!({ "userId": "user-sam" })).await;
+    let break_id = breaks.as_array().unwrap()[0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let (st, v) = post_json(
+        &app,
+        &format!("/api/breaks/{break_id}/assign"),
+        "tenant-acme",
+        serde_json::json!({ "userId": "user-sam" }),
+    )
+    .await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(v["assigneeId"], "user-sam");
     assert_eq!(v["status"], "investigating");

@@ -1,14 +1,19 @@
-use serde::{Deserialize, Serialize};
 use crate::types::BreakStatus;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Resolution { WriteOff, ManualMatch }
+pub enum Resolution {
+    WriteOff,
+    ManualMatch,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "snake_case")]
 pub enum CaseEventBody {
-    Comment { text: String },
+    Comment {
+        text: String,
+    },
     Assignment {
         #[serde(rename = "assigneeId")]
         assignee_id: String,
@@ -17,10 +22,16 @@ pub enum CaseEventBody {
         #[serde(rename = "txnIds")]
         txn_ids: Vec<String>,
     },
-    WriteOffProposed { reason: String },
-    ApprovalRequested { resolution: Resolution },
+    WriteOffProposed {
+        reason: String,
+    },
+    ApprovalRequested {
+        resolution: Resolution,
+    },
     Approved {},
-    Rejected { reason: String },
+    Rejected {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -63,7 +74,9 @@ mod tests {
             id: "evt-1".into(),
             actor_id: "user-mia".into(),
             at: "2026-05-16T09:35:00Z".into(),
-            body: CaseEventBody::ApprovalRequested { resolution: Resolution::WriteOff },
+            body: CaseEventBody::ApprovalRequested {
+                resolution: Resolution::WriteOff,
+            },
         };
         let v = serde_json::to_value(&e).unwrap();
         assert_eq!(v["id"], "evt-1");
@@ -75,8 +88,12 @@ mod tests {
     #[test]
     fn assignment_payload_is_camel_case() {
         let e = CaseEvent {
-            id: "e".into(), actor_id: "user-ada".into(), at: "t".into(),
-            body: CaseEventBody::Assignment { assignee_id: "user-mia".into() },
+            id: "e".into(),
+            actor_id: "user-ada".into(),
+            at: "t".into(),
+            body: CaseEventBody::Assignment {
+                assignee_id: "user-mia".into(),
+            },
         };
         let v = serde_json::to_value(&e).unwrap();
         assert_eq!(v["kind"], "assignment");

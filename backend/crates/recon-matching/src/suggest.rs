@@ -1,5 +1,5 @@
-use recon_domain::CanonicalTransaction;
 use crate::score::score_pair;
+use recon_domain::CanonicalTransaction;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Suggestion {
@@ -18,7 +18,9 @@ pub fn suggestions_for(
     let mut out: Vec<Suggestion> = Vec::new();
     for bt in break_txns {
         for c in candidates {
-            if c.id == bt.id { continue; }
+            if c.id == bt.id {
+                continue;
+            }
             let s = score_pair(bt, c);
             if s >= min_score {
                 out.push(Suggestion {
@@ -32,7 +34,12 @@ pub fn suggestions_for(
             }
         }
     }
-    out.sort_by(|x, y| y.score.partial_cmp(&x.score).unwrap().then(x.txn_ids.cmp(&y.txn_ids)));
+    out.sort_by(|x, y| {
+        y.score
+            .partial_cmp(&x.score)
+            .unwrap()
+            .then(x.txn_ids.cmp(&y.txn_ids))
+    });
     out
 }
 
@@ -41,10 +48,19 @@ mod tests {
     use super::*;
     use recon_domain::{CanonicalTransaction, Direction};
     fn txn(id: &str, amt: i64) -> CanonicalTransaction {
-        CanonicalTransaction { id: id.into(), tenant_id: "t".into(), source_id: "s".into(),
-            external_ref: id.into(), value_date: "2026-05-01".into(),
-            posted_at: "2026-05-01T00:00:00Z".into(), amount_minor: amt, currency: "GBP".into(),
-            direction: Direction::Debit, counterparty: None, description: "d".into() }
+        CanonicalTransaction {
+            id: id.into(),
+            tenant_id: "t".into(),
+            source_id: "s".into(),
+            external_ref: id.into(),
+            value_date: "2026-05-01".into(),
+            posted_at: "2026-05-01T00:00:00Z".into(),
+            amount_minor: amt,
+            currency: "GBP".into(),
+            direction: Direction::Debit,
+            counterparty: None,
+            description: "d".into(),
+        }
     }
     #[test]
     fn returns_sorted_candidates() {

@@ -28,7 +28,11 @@ pub fn score_pair(a: &CanonicalTransaction, b: &CanonicalTransaction) -> f64 {
     let date_diff = (day_number(&a.value_date) - day_number(&b.value_date)).abs() as f64;
     let date_score = (1.0 - date_diff / 30.0).clamp(0.0, 1.0);
 
-    let ref_score = if a.external_ref == b.external_ref { 1.0 } else { 0.0 };
+    let ref_score = if a.external_ref == b.external_ref {
+        1.0
+    } else {
+        0.0
+    };
 
     let raw = 0.6 * amount_score + 0.3 * date_score + 0.1 * ref_score;
     raw.clamp(0.0, 1.0)
@@ -41,10 +45,16 @@ mod tests {
 
     fn txn(id: &str, amt: i64, date: &str, dir: Direction, cur: &str) -> CanonicalTransaction {
         CanonicalTransaction {
-            id: id.into(), tenant_id: "t".into(), source_id: "s".into(),
-            external_ref: id.into(), value_date: date.into(),
-            posted_at: format!("{date}T00:00:00Z"), amount_minor: amt,
-            currency: cur.into(), direction: dir, counterparty: None,
+            id: id.into(),
+            tenant_id: "t".into(),
+            source_id: "s".into(),
+            external_ref: id.into(),
+            value_date: date.into(),
+            posted_at: format!("{date}T00:00:00Z"),
+            amount_minor: amt,
+            currency: cur.into(),
+            direction: dir,
+            counterparty: None,
             description: "d".into(),
         }
     }
@@ -54,17 +64,29 @@ mod tests {
         // Both transactions share external_ref "R1" so the ref component
         // contributes its full 0.1, making amount_score=1 + date_score=1 + ref_score=1 → 1.0.
         let a = CanonicalTransaction {
-            id: "a".into(), tenant_id: "t".into(), source_id: "s".into(),
-            external_ref: "R1".into(), value_date: "2026-05-01".into(),
-            posted_at: "2026-05-01T00:00:00Z".into(), amount_minor: 1000,
-            currency: "GBP".into(), direction: Direction::Debit, counterparty: None,
+            id: "a".into(),
+            tenant_id: "t".into(),
+            source_id: "s".into(),
+            external_ref: "R1".into(),
+            value_date: "2026-05-01".into(),
+            posted_at: "2026-05-01T00:00:00Z".into(),
+            amount_minor: 1000,
+            currency: "GBP".into(),
+            direction: Direction::Debit,
+            counterparty: None,
             description: "d".into(),
         };
         let b = CanonicalTransaction {
-            id: "b".into(), tenant_id: "t".into(), source_id: "s".into(),
-            external_ref: "R1".into(), value_date: "2026-05-01".into(),
-            posted_at: "2026-05-01T00:00:00Z".into(), amount_minor: 1000,
-            currency: "GBP".into(), direction: Direction::Debit, counterparty: None,
+            id: "b".into(),
+            tenant_id: "t".into(),
+            source_id: "s".into(),
+            external_ref: "R1".into(),
+            value_date: "2026-05-01".into(),
+            posted_at: "2026-05-01T00:00:00Z".into(),
+            amount_minor: 1000,
+            currency: "GBP".into(),
+            direction: Direction::Debit,
+            counterparty: None,
             description: "d".into(),
         };
         assert!((score_pair(&a, &b) - 1.0).abs() < 1e-9);

@@ -3,8 +3,8 @@ use recon_domain::{CanonicalTransaction, Direction};
 use recon_matching::{reconcile, MatchConfig};
 
 fn arb_txns(prefix: &'static str) -> impl Strategy<Value = Vec<CanonicalTransaction>> {
-    prop::collection::vec((1i64..1_000_000i64, 1u32..28u32, any::<bool>()), 0..12)
-        .prop_map(move |rows| {
+    prop::collection::vec((1i64..1_000_000i64, 1u32..28u32, any::<bool>()), 0..12).prop_map(
+        move |rows| {
             rows.into_iter()
                 .enumerate()
                 .map(|(i, (amt, day, debit))| CanonicalTransaction {
@@ -16,12 +16,17 @@ fn arb_txns(prefix: &'static str) -> impl Strategy<Value = Vec<CanonicalTransact
                     posted_at: format!("2026-05-{day:02}T00:00:00Z"),
                     amount_minor: amt,
                     currency: "GBP".into(),
-                    direction: if debit { Direction::Debit } else { Direction::Credit },
+                    direction: if debit {
+                        Direction::Debit
+                    } else {
+                        Direction::Credit
+                    },
                     counterparty: None,
                     description: "d".into(),
                 })
                 .collect()
-        })
+        },
+    )
 }
 
 proptest! {
