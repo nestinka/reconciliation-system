@@ -2,13 +2,13 @@ use recon_domain::UserRole;
 use crate::error::AuthError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Permission { ViewRecon, AssignBreak, ProposeResolution, ApproveResolution, ManageUsers }
+pub enum Permission { ViewRecon, AssignBreak, ProposeResolution, ApproveResolution, ManageUsers, ManageData }
 
 pub fn permitted(role: UserRole, perm: Permission) -> bool {
     use Permission::*;
     use UserRole::*;
     match perm {
-        ViewRecon | AssignBreak | ProposeResolution => true,
+        ViewRecon | AssignBreak | ProposeResolution | ManageData => true,
         ApproveResolution => matches!(role, Approver | Admin),
         ManageUsers => matches!(role, Admin),
     }
@@ -46,5 +46,11 @@ mod tests {
     fn require_maps_to_forbidden() {
         assert_eq!(require(Operator, Permission::ManageUsers), Err(AuthError::Forbidden));
         assert_eq!(require(Admin, Permission::ManageUsers), Ok(()));
+    }
+    #[test]
+    fn manage_data_open_to_all_roles() {
+        for r in [Operator, Approver, Admin] {
+            assert!(permitted(r, Permission::ManageData));
+        }
     }
 }
