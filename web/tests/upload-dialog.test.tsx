@@ -100,14 +100,14 @@ describe("UploadDialog", () => {
     const user = userEvent.setup();
 
     // Stub client whose ingestFile rejects with an IngestError
-    const stubClient: ApiClient = {
-      ...new MockApiClient({ latencyMs: 0 }),
+    const base = new MockApiClient({ latencyMs: 0 });
+    const stubClient: ApiClient = Object.assign(base, {
       ingestFile: vi.fn().mockRejectedValue(
         new IngestError("parse", "file contains invalid rows", [
           { row: 4, field: "valueDate", message: "unparseable" },
         ])
       ),
-    };
+    });
 
     renderDialog(stubClient);
 
@@ -130,15 +130,15 @@ describe("UploadDialog", () => {
   it("shows duplicate refs report when ingestFile throws IngestError(duplicate)", async () => {
     const user = userEvent.setup();
 
-    const stubClient: ApiClient = {
-      ...new MockApiClient({ latencyMs: 0 }),
+    const base2 = new MockApiClient({ latencyMs: 0 });
+    const stubClient: ApiClient = Object.assign(base2, {
       ingestFile: vi.fn().mockRejectedValue(
         new IngestError("duplicate", "duplicate transaction references", undefined, [
           "REF-001",
           "REF-002",
         ])
       ),
-    };
+    });
 
     renderDialog(stubClient);
 
