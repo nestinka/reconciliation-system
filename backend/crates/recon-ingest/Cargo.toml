@@ -6,7 +6,6 @@ version.workspace = true
 [dependencies]
 recon-domain = { path = "../recon-domain" }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 csv = { workspace = true }
 quick-xml = { workspace = true }

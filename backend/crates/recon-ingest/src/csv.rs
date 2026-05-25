@@ -216,19 +216,49 @@ impl CsvParser {
                 }
             }
             AmountMapping::DebitCredit { debit, credit } => {
-                let d = self.get(record, headers, debit).unwrap_or("").trim().to_string();
-                let c = self.get(record, headers, credit).unwrap_or("").trim().to_string();
-                let d_has = !d.is_empty() && parse_decimal_to_minor(&d).map(|v| v != 0).unwrap_or(false);
-                let c_has = !c.is_empty() && parse_decimal_to_minor(&c).map(|v| v != 0).unwrap_or(false);
+                // Resolve both columns, propagating resolution errors.
+                let d_raw = match self.get(record, headers, debit) {
+                    Ok(v) => v.trim().to_string(),
+                    Err(m) => {
+                        errs.push(RowError::new(row, "amount", m));
+                        return (None, None);
+                    }
+                };
+                let c_raw = match self.get(record, headers, credit) {
+                    Ok(v) => v.trim().to_string(),
+                    Err(m) => {
+                        errs.push(RowError::new(row, "amount", m));
+                        return (None, None);
+                    }
+                };
+                // Parse each column once, reusing the result.
+                let d_val = if d_raw.is_empty() {
+                    None
+                } else {
+                    match parse_decimal_to_minor(&d_raw) {
+                        Ok(v) => Some(v),
+                        Err(m) => {
+                            errs.push(RowError::new(row, "amount", m));
+                            return (None, None);
+                        }
+                    }
+                };
+                let c_val = if c_raw.is_empty() {
+                    None
+                } else {
+                    match parse_decimal_to_minor(&c_raw) {
+                        Ok(v) => Some(v),
+                        Err(m) => {
+                            errs.push(RowError::new(row, "amount", m));
+                            return (None, None);
+                        }
+                    }
+                };
+                let d_has = d_val.map(|v| v != 0).unwrap_or(false);
+                let c_has = c_val.map(|v| v != 0).unwrap_or(false);
                 match (d_has, c_has) {
-                    (true, false) => match parse_decimal_to_minor(&d) {
-                        Ok(v) => (Some(v.abs()), Some(Direction::Debit)),
-                        Err(m) => { errs.push(RowError::new(row, "amount", m)); (None, None) }
-                    },
-                    (false, true) => match parse_decimal_to_minor(&c) {
-                        Ok(v) => (Some(v.abs()), Some(Direction::Credit)),
-                        Err(m) => { errs.push(RowError::new(row, "amount", m)); (None, None) }
-                    },
+                    (true, false) => (Some(d_val.unwrap().abs()), Some(Direction::Debit)),
+                    (false, true) => (Some(c_val.unwrap().abs()), Some(Direction::Credit)),
                     (false, false) => {
                         errs.push(RowError::new(row, "amount", "neither debit nor credit populated"));
                         (None, None)
@@ -342,5 +372,29 @@ mod tests {
         let errs = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].field, "amount");
+    }
+
+    #[test]
+    fn debit_credit_out_of_range_column_surfaces_error() {
+        let mapping = CsvMapping {
+            has_header: false,
+            delimiter: b',',
+            external_ref: ColRef::Index(0),
+            value_date: ColRef::Index(1),
+            date_format: "%Y-%m-%d".into(),
+            // debit column index 9 is out of range for a 3-column row
+            amount: AmountMapping::DebitCredit {
+                debit: ColRef::Index(9),
+                credit: ColRef::Index(2),
+            },
+            description: ColRef::Index(2),
+            currency: None,
+            counterparty: None,
+        };
+        let csv = "R1,2026-05-10,40.00\n";
+        let errs = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "amount");
+        assert!(errs[0].message.contains("out of range"), "expected 'out of range' in: {}", errs[0].message);
     }
 }

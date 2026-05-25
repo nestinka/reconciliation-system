@@ -19,6 +19,9 @@ pub fn parse_decimal_to_minor(raw: &str) -> Result<i64, String> {
         Some(rest) => (-1i64, rest),
         None => (1i64, s.strip_prefix('+').unwrap_or(&s)),
     };
+    if neg_paren && sign == -1 {
+        return Err(format!("ambiguous sign (both '-' and parentheses): {raw}"));
+    }
     if digits.is_empty() {
         return Err(format!("not a number: {raw}"));
     }
@@ -37,7 +40,10 @@ pub fn parse_decimal_to_minor(raw: &str) -> Result<i64, String> {
     }
     let whole: i64 = int_part.parse().map_err(|_| format!("not a number: {raw}"))?;
     let frac: i64 = format!("{frac_part:0<2}").parse().unwrap_or(0);
-    let magnitude = whole * 100 + frac;
+    let magnitude = whole
+        .checked_mul(100)
+        .and_then(|v| v.checked_add(frac))
+        .ok_or_else(|| format!("amount out of range: {raw}"))?;
     let signed = magnitude * sign * if neg_paren { -1 } else { 1 };
     Ok(signed)
 }
@@ -81,5 +87,13 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(parse_decimal_to_minor("abc").is_err());
+    }
+    #[test]
+    fn rejects_overflow() {
+        assert!(parse_decimal_to_minor("99999999999999999").is_err());
+    }
+    #[test]
+    fn rejects_double_negative() {
+        assert!(parse_decimal_to_minor("(-50.00)").is_err());
     }
 }

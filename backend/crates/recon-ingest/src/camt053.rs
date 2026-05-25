@@ -66,7 +66,13 @@ impl Parser for Camt053Parser {
                     last_text.clear();
                 }
                 Ok(Event::Text(t)) => {
-                    last_text = t.unescape().map(|c| c.into_owned()).unwrap_or_default();
+                    match t.unescape() {
+                        Ok(c) => last_text = c.into_owned(),
+                        Err(e) => {
+                            errors.push(RowError::new(entry_index, "xml", format!("malformed XML: {e}")));
+                            break;
+                        }
+                    }
                 }
                 Ok(Event::End(e)) => {
                     let name = local_name_end(&e);
@@ -135,6 +141,8 @@ fn apply_text(
         "CdtDbtInd" => acc.cd_dbt = Some(text.to_string()),
         "Dt" if p == "ValDt" => acc.value_date = Some(text.to_string()),
         "Dt" if p == "BookgDt" => acc.booking_date = Some(text.to_string()),
+        "DtTm" if p == "ValDt" => acc.value_date = Some(text.split('T').next().unwrap_or(text).to_string()),
+        "DtTm" if p == "BookgDt" => acc.booking_date = Some(text.to_string()),
         "AcctSvcrRef" => acc.acct_svcr_ref = Some(text.to_string()),
         "NtryRef" => acc.ntry_ref = Some(text.to_string()),
         "Ustrd" => acc.ustrd = Some(text.to_string()),
@@ -267,5 +275,18 @@ mod tests {
     fn malformed_xml_errors() {
         let xml = "<Document><Ntry><Amt>oops"; // unclosed
         assert!(Camt053Parser.parse(xml.as_bytes()).is_err());
+    }
+
+    #[test]
+    fn parses_dtdtm_value_date() {
+        let xml = r#"<Document><Stmt><Ntry>
+            <Amt Ccy="USD">42.00</Amt>
+            <CdtDbtInd>CRDT</CdtDbtInd>
+            <ValDt><DtTm>2026-05-10T09:30:00Z</DtTm></ValDt>
+            <NtryRef>REF-DtTm</NtryRef>
+          </Ntry></Stmt></Document>"#;
+        let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
+        assert_eq!(txns.len(), 1);
+        assert_eq!(txns[0].value_date, "2026-05-10");
     }
 }

@@ -17,16 +17,15 @@ fn mapping() -> CsvMapping {
 }
 
 proptest! {
-    // Any successfully-parsed signed amount yields a non-negative magnitude.
     #[test]
-    fn amount_minor_is_non_negative(cents in -1_000_000i64..1_000_000) {
-        let whole = cents / 100;
-        let frac = (cents % 100).abs();
-        let line = format!("R1,2026-05-10,{whole}.{frac:02},Desc\n");
-        if let Ok(txns) = CsvParser::new(mapping()).parse(line.as_bytes()) {
-            for t in txns {
-                prop_assert!(t.amount_minor >= 0);
-            }
-        }
+    fn direction_tracks_sign(neg in any::<bool>(), units in 0u32..1_000_000, cents in 0u32..100) {
+        let sign = if neg { "-" } else { "" };
+        let line = format!("R1,2026-05-10,{sign}{units}.{cents:02},Desc\n");
+        let txns = CsvParser::new(mapping()).parse(line.as_bytes()).unwrap();
+        let amount = units as i64 * 100 + cents as i64;
+        if amount == 0 { return Ok(()); } // zero has no meaningful sign
+        prop_assert!(txns[0].amount_minor >= 0);
+        let expected = if neg { recon_domain::Direction::Debit } else { recon_domain::Direction::Credit };
+        prop_assert_eq!(txns[0].direction, expected);
     }
 }
