@@ -1,3 +1,4 @@
+use recon_domain::SourceKind;
 use recon_store::Store;
 
 #[sqlx::test(migrations = "../../migrations")]
@@ -20,4 +21,20 @@ async fn unique_constraint_blocks_duplicate_ref(pool: sqlx::PgPool) {
     insert_dup("DUP".to_string()).await.unwrap();
     let second = insert_dup("DUP".to_string()).await;
     assert!(second.is_err(), "second insert of same (source,ref) must violate the unique constraint");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_and_list_sources(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let s = store.create_source("t", SourceKind::Bank, "Acme Bank", "GBP").await.unwrap();
+    assert!(s.id.starts_with("src-"));
+    let got = store.get_source("t", &s.id).await.unwrap();
+    assert_eq!(got.name, "Acme Bank");
+    let list = store.list_sources("t").await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].txn_count, 0);
+    // cross-tenant get is NotFound
+    assert!(store.get_source("other", &s.id).await.is_err());
 }

@@ -8,6 +8,7 @@ recon-domain = { path = "../recon-domain" }
 recon-matching = { path = "../recon-matching" }
 recon-auth = { path = "../recon-auth" }
 sqlx = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
