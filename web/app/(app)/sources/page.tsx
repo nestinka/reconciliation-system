@@ -49,7 +49,7 @@ const KIND_OPTIONS: { value: SourceKind; label: string }[] = [
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   kind: z.enum(["bank", "ledger", "cross_system"]),
-  currency: z.string().min(3, "3-letter currency").max(3),
+  currency: z.string().min(3, "3-letter currency code").max(3, "3-letter currency code"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -190,7 +190,7 @@ export default function SourcesPage() {
               <Label htmlFor="src-kind">Kind</Label>
               <Select
                 value={kind}
-                onValueChange={(v) => setValue("kind", v as SourceKind)}
+                onValueChange={(v) => setValue("kind", (v ?? "bank") as SourceKind)}
               >
                 <SelectTrigger id="src-kind">
                   <SelectValue />

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -49,6 +49,18 @@ export function UploadDialog({
     rows?: { row: number; field: string; message: string }[];
     refs?: string[];
   } | null>(null);
+
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setFile(null);
+    setReport(null);
+  }, [open]);
+
+  useEffect(() => {
+    setFile(null);
+    setReport(null);
+  }, [format]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // CSV mapping fields (indices, 0-based)
   const [hasHeader, setHasHeader] = useState(true);
@@ -271,8 +283,8 @@ export function UploadDialog({
                     File rejected — fix these rows:
                   </p>
                   <ul className="list-disc pl-4">
-                    {report.rows?.map((r, i) => (
-                      <li key={i}>
+                    {report.rows?.map((r) => (
+                      <li key={r.row}>
                         Row {r.row}: {r.field} — {r.message}
                       </li>
                     ))}

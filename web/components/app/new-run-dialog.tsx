@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -42,6 +42,14 @@ export function NewRunDialog({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!open) {
+      setName(""); setA(""); setB(""); setFrom(""); setTo("");
+    }
+  }, [open]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const mutation = useMutation({
     mutationFn: () =>
       api.createRun(tenantId, { name, sourceAId: a, sourceBId: b, from, to }),
@@ -54,6 +62,7 @@ export function NewRunDialog({
     onError: () => toast.error("Failed to create run."),
   });
 
+  // from/to are native date inputs (ISO YYYY-MM-DD), which compare correctly lexicographically.
   const valid = name && a && b && a !== b && from && to && from <= to;
 
   return (
