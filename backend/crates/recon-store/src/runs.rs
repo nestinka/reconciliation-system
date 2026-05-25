@@ -1,8 +1,25 @@
 use crate::{Store, StoreError};
-use recon_domain::{ReconciliationRun, RunStatus};
+use recon_domain::{BreakType, MatchType, ReconciliationRun, RunStatus};
 use recon_matching::{reconcile, MatchConfig, RunResult};
 use time::OffsetDateTime;
 use uuid::Uuid;
+
+fn match_type_str(m: MatchType) -> &'static str {
+    match m {
+        MatchType::Matched => "matched",
+        MatchType::Partial => "partial",
+        MatchType::Duplicate => "duplicate",
+    }
+}
+
+fn break_type_str(b: BreakType) -> &'static str {
+    match b {
+        BreakType::Unmatched => "unmatched",
+        BreakType::Partial => "partial",
+        BreakType::Duplicate => "duplicate",
+        BreakType::Break => "break",
+    }
+}
 
 impl Store {
     /// Generic writer: run header + decisions + breaks + cases (status `open`,
@@ -27,7 +44,7 @@ impl Store {
             .execute(&mut *tx).await?;
 
         for (i, d) in result.decisions.iter().enumerate() {
-            let type_str = serde_json::to_value(d.match_type)?.as_str().unwrap().to_string();
+            let type_str = match_type_str(d.match_type);
             sqlx::query("INSERT INTO match_decisions(id,tenant_id,run_id,type,txn_ids,score,config_version) VALUES ($1,$2,$3,$4,$5,$6,$7)")
                 .bind(format!("md-{run_id}-{i}")).bind(tenant_id).bind(run_id).bind(type_str).bind(&d.txn_ids).bind(d.score).bind(&cfg.version)
                 .execute(&mut *tx).await?;
@@ -36,7 +53,7 @@ impl Store {
         for (i, bd) in result.breaks.iter().enumerate() {
             let case_id = format!("case-{run_id}-{i}");
             let break_id = format!("break-{run_id}-{i}");
-            let type_str = serde_json::to_value(bd.break_type)?.as_str().unwrap().to_string();
+            let type_str = break_type_str(bd.break_type);
             sqlx::query("INSERT INTO cases(id,tenant_id,break_id,assignee_id,status) VALUES ($1,$2,$3,NULL,'open')")
                 .bind(&case_id).bind(tenant_id).bind(&break_id)
                 .execute(&mut *tx).await?;

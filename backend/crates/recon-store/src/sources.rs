@@ -59,9 +59,10 @@ impl Store {
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM canonical_transactions WHERE source_id=$1",
+                "SELECT count(*) FROM canonical_transactions WHERE source_id=$1 AND tenant_id=$2",
             )
             .bind(&r.id)
+            .bind(tenant_id)
             .fetch_one(&self.pool)
             .await?;
             out.push(SourceListItem { source: r.into(), txn_count: count });
