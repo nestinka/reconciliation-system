@@ -51,23 +51,44 @@ impl Store {
     }
 
     pub async fn list_sources(&self, tenant_id: &str) -> Result<Vec<SourceListItem>, StoreError> {
-        let rows: Vec<SourceRow> =
-            sqlx::query_as("SELECT id,tenant_id,kind,name,currency FROM sources WHERE tenant_id=$1 ORDER BY name")
-                .bind(tenant_id)
-                .fetch_all(&self.pool)
-                .await?;
-        let mut out = Vec::with_capacity(rows.len());
-        for r in rows {
-            let count: i64 = sqlx::query_scalar(
-                "SELECT count(*) FROM canonical_transactions WHERE source_id=$1 AND tenant_id=$2",
-            )
-            .bind(&r.id)
-            .bind(tenant_id)
-            .fetch_one(&self.pool)
-            .await?;
-            out.push(SourceListItem { source: r.into(), txn_count: count });
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            id: String,
+            tenant_id: String,
+            kind: String,
+            name: String,
+            currency: String,
+            txn_count: i64,
         }
-        Ok(out)
+        let rows: Vec<Row> = sqlx::query_as(
+            "SELECT s.id, s.tenant_id, s.kind, s.name, s.currency, \
+                    COUNT(t.id) AS txn_count \
+             FROM sources s \
+             LEFT JOIN canonical_transactions t ON t.source_id = s.id AND t.tenant_id = s.tenant_id \
+             WHERE s.tenant_id = $1 \
+             GROUP BY s.id, s.tenant_id, s.kind, s.name, s.currency \
+             ORDER BY s.name",
+        )
+        .bind(tenant_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| SourceListItem {
+                source: recon_domain::Source {
+                    id: r.id,
+                    tenant_id: r.tenant_id,
+                    kind: match r.kind.as_str() {
+                        "bank" => SourceKind::Bank,
+                        "ledger" => SourceKind::Ledger,
+                        _ => SourceKind::CrossSystem,
+                    },
+                    name: r.name,
+                    currency: r.currency,
+                },
+                txn_count: r.txn_count,
+            })
+            .collect())
     }
 }
 

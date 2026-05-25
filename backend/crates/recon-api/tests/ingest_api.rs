@@ -151,6 +151,24 @@ async fn full_ingest_pipeline(pool: sqlx::PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn ingest_missing_format_is_bad_request(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency) VALUES ('s1','tenant-acme','bank','Bank','GBP')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+    let boundary = "B";
+    let body = multipart_body(boundary, &[("file", Some("x.csv"), "ref,date\n")]); // no `format` field
+    let req = Request::builder().method("POST").uri("/api/sources/s1/ingest")
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn cross_tenant_ingest_is_not_found(pool: sqlx::PgPool) {
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme'),('tenant-globex','Globex','globex')").execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency) VALUES ('s-acme','tenant-acme','bank','Bank','GBP')").execute(&pool).await.unwrap();

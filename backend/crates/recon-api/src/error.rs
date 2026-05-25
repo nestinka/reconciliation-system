@@ -83,7 +83,9 @@ impl IntoResponse for ApiError {
         if let Some(serde_json::Value::Object(map)) = self.details {
             if let serde_json::Value::Object(target) = &mut err {
                 for (k, v) in map {
-                    target.insert(k, v);
+                    if k != "code" && k != "message" {
+                        target.insert(k, v);
+                    }
                 }
             }
         }

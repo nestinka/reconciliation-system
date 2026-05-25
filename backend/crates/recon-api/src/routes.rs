@@ -209,6 +209,9 @@ async fn create_source(
     Json(body): Json<CreateSourceReq>,
 ) -> Result<Json<Value>, ApiError> {
     require_manage_data(&ctx)?;
+    if body.name.trim().is_empty() || body.currency.trim().len() != 3 {
+        return Err(ApiError::BadRequest());
+    }
     let src = s
         .store
         .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency)
@@ -216,6 +219,7 @@ async fn create_source(
     Ok(Json(json!(src)))
 }
 
+// --- validation helpers ---
 fn valid_date(s: &str) -> bool {
     time::Date::parse(
         s,
@@ -231,6 +235,9 @@ async fn create_run(
 ) -> Result<Json<Value>, ApiError> {
     require_manage_data(&ctx)?;
     if !valid_date(&body.from) || !valid_date(&body.to) || body.to < body.from {
+        return Err(ApiError::BadRequest());
+    }
+    if body.source_a_id == body.source_b_id {
         return Err(ApiError::BadRequest());
     }
     let run = s
