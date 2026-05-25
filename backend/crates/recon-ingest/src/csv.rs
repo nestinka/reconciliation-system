@@ -79,12 +79,10 @@ impl Parser for CsvParser {
         let mut errors = Vec::new();
 
         for (i, result) in rdr.records().enumerate() {
-            // Row number presented to users is 1-based; when a header is
-            // present the header is "row 1" and the first data record is
-            // "row 2", but the csv reader's internal byte-position includes
-            // an extra record for the header that it already consumed, so
-            // the effective offset is +3 (1-based + header consumed + 1).
-            let row = if self.mapping.has_header { i + 3 } else { i + 1 };
+            // Row number presented to users is the 1-based file line. With a
+            // header on line 1, the reader has already consumed it, so the
+            // first data record (i=0) is line 2; without a header it is line 1.
+            let row = if self.mapping.has_header { i + 2 } else { i + 1 };
             let record = match result {
                 Ok(r) => r,
                 Err(e) => {
@@ -313,9 +311,9 @@ mod tests {
         let errs = CsvParser::new(signed_mapping()).parse(csv.as_bytes()).unwrap_err();
         // Two bad rows -> two errors; nothing returned.
         assert_eq!(errs.len(), 2);
-        assert_eq!(errs[0].row, 4); // R2 (header + 1-based)
+        assert_eq!(errs[0].row, 3); // R2 is file line 3 (header=1, R1=2, R2=3)
         assert_eq!(errs[0].field, "valueDate");
-        assert_eq!(errs[1].row, 5); // R3
+        assert_eq!(errs[1].row, 4); // R3 is file line 4
         assert_eq!(errs[1].field, "amount");
     }
 
