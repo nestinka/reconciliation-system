@@ -3,10 +3,11 @@ use crate::dto::*;
 use crate::error::ApiError;
 use crate::state::AppState;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     routing::{get, post},
     Json, Router,
 };
+use recon_ingest::Parser;
 use recon_store::read::{BreakFilter, RunFilter};
 use serde_json::{json, Value};
 
@@ -35,7 +36,12 @@ pub fn router(state: AppState) -> Router {
         // Non-privileged member list for timeline/assignee display.
         .route("/api/members", get(crate::routes_users::list_members))
         .route("/api/dashboard", get(dashboard))
-        .route("/api/runs", get(list_runs))
+        .route("/api/sources", get(list_sources).post(create_source))
+        .route(
+            "/api/sources/:source_id/ingest",
+            post(ingest_source).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route("/api/runs", get(list_runs).post(create_run))
         .route("/api/runs/:run_id", get(get_run))
         .route("/api/breaks", get(list_breaks))
         .route("/api/breaks/:break_id/assign", post(assign_break))
@@ -185,4 +191,125 @@ async fn append_event(
 async fn dev_reseed(State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
     s.store.seed().await?;
     Ok(Json(json!({ "ok": true })))
+}
+
+fn require_manage_data(ctx: &AuthContext) -> Result<(), ApiError> {
+    recon_auth::rbac::require(ctx.role, recon_auth::rbac::Permission::ManageData)
+        .map_err(|_| ApiError::Forbidden())
+}
+
+async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id).await?)))
+}
+
+async fn create_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Json(body): Json<CreateSourceReq>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    let src = s
+        .store
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency)
+        .await?;
+    Ok(Json(json!(src)))
+}
+
+fn valid_date(s: &str) -> bool {
+    time::Date::parse(
+        s,
+        time::macros::format_description!("[year]-[month]-[day]"),
+    )
+    .is_ok()
+}
+
+async fn create_run(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Json(body): Json<CreateRunReq>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    if !valid_date(&body.from) || !valid_date(&body.to) || body.to < body.from {
+        return Err(ApiError::BadRequest());
+    }
+    let run = s
+        .store
+        .create_run(&ctx.tenant_id, &body.name, &body.source_a_id, &body.source_b_id, &body.from, &body.to)
+        .await?;
+    Ok(Json(json!(run)))
+}
+
+async fn ingest_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+    mut mp: Multipart,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+
+    // Source must exist in tenant; also gives us the default currency.
+    let source = s.store.get_source(&ctx.tenant_id, &source_id).await?;
+
+    let mut file: Option<Vec<u8>> = None;
+    let mut format: Option<String> = None;
+    let mut mapping_json: Option<String> = None;
+    while let Some(field) = mp.next_field().await.map_err(|_| ApiError::BadRequest())? {
+        match field.name() {
+            Some("file") => file = Some(field.bytes().await.map_err(|_| ApiError::BadRequest())?.to_vec()),
+            Some("format") => format = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            Some("mapping") => mapping_json = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            _ => {}
+        }
+    }
+    let bytes = file.ok_or_else(ApiError::BadRequest)?;
+    let format = format.ok_or_else(ApiError::BadRequest)?;
+
+    let parsed = match format.as_str() {
+        "csv" => {
+            let raw = mapping_json.ok_or_else(ApiError::BadRequest)?;
+            let mapping: recon_ingest::csv::CsvMapping =
+                serde_json::from_str(&raw).map_err(|_| ApiError::BadRequest())?;
+            recon_ingest::csv::CsvParser::new(mapping).parse(&bytes)
+        }
+        "camt053" => recon_ingest::camt053::Camt053Parser.parse(&bytes),
+        _ => return Err(ApiError::BadRequest()),
+    };
+
+    let parsed = match parsed {
+        Ok(p) => p,
+        Err(rows) => {
+            let rows: Vec<Value> = rows
+                .iter()
+                .map(|e| json!({ "row": e.row, "field": e.field, "message": e.message }))
+                .collect();
+            return Err(ApiError::with_details(
+                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                "parse",
+                "file contains invalid rows",
+                json!({ "rows": rows }),
+            ));
+        }
+    };
+
+    // Map ParsedTxn -> CanonicalTransaction (assign ids + defaults).
+    let txns: Vec<recon_domain::CanonicalTransaction> = parsed
+        .into_iter()
+        .map(|p| recon_domain::CanonicalTransaction {
+            id: format!("txn-{}", uuid::Uuid::new_v4()),
+            tenant_id: ctx.tenant_id.clone(),
+            source_id: source_id.clone(),
+            external_ref: p.external_ref,
+            value_date: p.value_date.clone(),
+            posted_at: p.posted_at.unwrap_or_else(|| format!("{}T00:00:00Z", p.value_date)),
+            amount_minor: p.amount_minor,
+            currency: p.currency.unwrap_or_else(|| source.currency.clone()),
+            direction: p.direction,
+            counterparty: p.counterparty,
+            description: p.description,
+        })
+        .collect();
+
+    let n = s.store.ingest_transactions(&ctx.tenant_id, &source_id, &txns).await?;
+    Ok(Json(json!({ "ingested": n, "sourceId": source_id })))
 }
