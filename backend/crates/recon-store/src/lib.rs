@@ -4,6 +4,7 @@ pub mod error;
 pub mod read;
 pub mod rows;
 pub mod seed;
+pub mod runs;
 pub mod sources;
 pub mod write;
 

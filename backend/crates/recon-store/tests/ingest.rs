@@ -101,3 +101,32 @@ async fn ingest_into_foreign_source_is_not_found(pool: sqlx::PgPool) {
     let err = store.ingest_transactions("other", "s", &[txn("txn-1", "R1")]).await.unwrap_err();
     assert!(matches!(err, recon_store::StoreError::NotFound));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')").execute(&store.pool).await.unwrap();
+    let bank = store.create_source("t", SourceKind::Bank, "Bank", "GBP").await.unwrap();
+    let ledger = store.create_source("t", SourceKind::Ledger, "Ledger", "GBP").await.unwrap();
+
+    // One matching pair (same amount/date) and one bank-only break.
+    let mk = |id: &str, src: &str, eref: &str, amt: i64| CanonicalTransaction {
+        id: id.into(), tenant_id: "t".into(), source_id: src.into(), external_ref: eref.into(),
+        value_date: "2026-05-10".into(), posted_at: "2026-05-10T00:00:00Z".into(),
+        amount_minor: amt, currency: "GBP".into(), direction: Direction::Debit,
+        counterparty: None, description: "x".into(),
+    };
+    store.ingest_transactions("t", &bank.id, &[mk("txn-a1", &bank.id, "A1", 1000), mk("txn-a2", &bank.id, "A2", 9999)]).await.unwrap();
+    store.ingest_transactions("t", &ledger.id, &[mk("txn-b1", &ledger.id, "B1", 1000)]).await.unwrap();
+
+    let run = store.create_run("t", "Test run", &bank.id, &ledger.id, "2026-05-01", "2026-05-31").await.unwrap();
+    assert_eq!(run.status, recon_domain::RunStatus::Completed);
+
+    // The run is readable back with breaks.
+    let detail = store.get_run("t", &run.id).await.unwrap();
+    assert_eq!(detail.run.id, run.id);
+    assert!(!detail.unmatched.is_empty(), "the bank-only txn should be a break");
+
+    // Foreign tenant cannot create runs against these sources.
+    assert!(store.create_run("other", "x", &bank.id, &ledger.id, "2026-05-01", "2026-05-31").await.is_err());
+}
