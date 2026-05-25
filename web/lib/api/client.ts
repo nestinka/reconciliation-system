@@ -12,6 +12,8 @@ import type {
   Case,
   CaseEvent,
   CanonicalTransaction,
+  Source,
+  SourceKind,
 } from "@/lib/domain/types";
 
 export interface DashboardSummary {
@@ -69,6 +71,38 @@ export interface UpdateUserPatch {
   disabled?: boolean;
 }
 
+export interface SourceListItem extends Source { txnCount: number }
+export interface CreateSourceInput { kind: SourceKind; name: string; currency: string }
+export type IngestFormat = "csv" | "camt053";
+export interface IngestResult { ingested: number; sourceId: string }
+export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
+
+// CSV mapping mirrors the Rust serde shape exactly.
+export type ColRef = { index: number } | { header: string };
+export type AmountMapping =
+  | { signed: { column: ColRef; debitWhenNegative: boolean } }
+  | { debitCredit: { debit: ColRef; credit: ColRef } };
+export interface CsvMapping {
+  hasHeader: boolean;
+  delimiter: number;            // byte value, 44 = ','
+  externalRef: ColRef;
+  valueDate: ColRef;
+  dateFormat: string;
+  amount: AmountMapping;
+  description: ColRef;
+  currency?: ColRef;
+  counterparty?: ColRef;
+}
+
+export class IngestError extends Error {
+  constructor(
+    public code: "parse" | "duplicate",
+    message: string,
+    public rows?: { row: number; field: string; message: string }[],
+    public refs?: string[],
+  ) { super(message); }
+}
+
 export interface ApiClient {
   listTenants(): Promise<Tenant[]>;
   listUsers(tenantId: string): Promise<User[]>;
@@ -99,4 +133,8 @@ export interface ApiClient {
     caseId: string,
     event: NewCaseEvent
   ): Promise<Case>;
+  listSources(tenantId: string): Promise<SourceListItem[]>;
+  createSource(tenantId: string, input: CreateSourceInput): Promise<Source>;
+  ingestFile(tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult>;
+  createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun>;
 }
