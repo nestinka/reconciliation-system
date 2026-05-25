@@ -84,7 +84,13 @@ impl Parser for Camt053Parser {
                     path.pop();
                     last_text.clear();
                 }
-                Ok(Event::Eof) => break,
+                Ok(Event::Eof) => {
+                    // If an Ntry was started but never closed, the XML is truncated.
+                    if accum.is_some() {
+                        errors.push(RowError::new(entry_index, "xml", "malformed XML: unexpected end of file inside <Ntry>"));
+                    }
+                    break;
+                }
                 Err(e) => {
                     errors.push(RowError::new(entry_index, "xml", format!("malformed XML: {e}")));
                     break;
@@ -242,5 +248,24 @@ mod tests {
         assert_eq!(txns[1].amount_minor, 9050);
         assert_eq!(txns[1].posted_at, None);
         assert_eq!(txns[1].description, "Customer payment");
+    }
+
+    #[test]
+    fn entry_missing_required_fields_errors() {
+        let xml = r#"<Document><Stmt><Ntry>
+            <Amt Ccy="GBP">10.00</Amt>
+            <ValDt><Dt>2026-05-10</Dt></ValDt>
+          </Ntry></Stmt></Document>"#;
+        // No CdtDbtInd, no ref -> two errors, nothing returned.
+        let errs = Camt053Parser.parse(xml.as_bytes()).unwrap_err();
+        let fields: Vec<&str> = errs.iter().map(|e| e.field.as_str()).collect();
+        assert!(fields.contains(&"direction"));
+        assert!(fields.contains(&"externalRef"));
+    }
+
+    #[test]
+    fn malformed_xml_errors() {
+        let xml = "<Document><Ntry><Amt>oops"; // unclosed
+        assert!(Camt053Parser.parse(xml.as_bytes()).is_err());
     }
 }
