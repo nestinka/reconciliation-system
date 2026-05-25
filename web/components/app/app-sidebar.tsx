@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, TriangleAlert, Scale, Users, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, ListChecks, TriangleAlert, Scale, Users, Database, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/auth-provider";
 
@@ -16,6 +16,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: ListChecks },
+  { href: "/sources", label: "Sources", icon: Database },
   { href: "/exceptions", label: "Exceptions", icon: TriangleAlert },
   { href: "/users", label: "Users", icon: Users, adminOnly: true },
 ];
