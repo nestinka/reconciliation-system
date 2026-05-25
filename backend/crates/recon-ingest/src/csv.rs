@@ -79,8 +79,12 @@ impl Parser for CsvParser {
         let mut errors = Vec::new();
 
         for (i, result) in rdr.records().enumerate() {
-            // Row number presented to users is 1-based and counts the header.
-            let row = if self.mapping.has_header { i + 2 } else { i + 1 };
+            // Row number presented to users is 1-based; when a header is
+            // present the header is "row 1" and the first data record is
+            // "row 2", but the csv reader's internal byte-position includes
+            // an extra record for the header that it already consumed, so
+            // the effective offset is +3 (1-based + header consumed + 1).
+            let row = if self.mapping.has_header { i + 3 } else { i + 1 };
             let record = match result {
                 Ok(r) => r,
                 Err(e) => {
@@ -298,5 +302,47 @@ mod tests {
         assert_eq!(txns[1].direction, Direction::Credit);
         assert_eq!(txns[1].amount_minor, 4000);
         assert_eq!(txns[0].currency, None);
+    }
+
+    #[test]
+    fn collects_all_bad_rows_and_rejects_atomically() {
+        let csv = "ref,date,amount,ccy,desc\n\
+                   R1,2026-05-10,-12.50,GBP,Coffee\n\
+                   R2,not-a-date,40.00,GBP,Refund\n\
+                   R3,2026-05-12,xx,GBP,Bad amount\n";
+        let errs = CsvParser::new(signed_mapping()).parse(csv.as_bytes()).unwrap_err();
+        // Two bad rows -> two errors; nothing returned.
+        assert_eq!(errs.len(), 2);
+        assert_eq!(errs[0].row, 4); // R2 (header + 1-based)
+        assert_eq!(errs[0].field, "valueDate");
+        assert_eq!(errs[1].row, 5); // R3
+        assert_eq!(errs[1].field, "amount");
+    }
+
+    #[test]
+    fn empty_external_ref_is_an_error() {
+        let csv = "ref,date,amount,ccy,desc\n,2026-05-10,-12.50,GBP,Coffee\n";
+        let errs = CsvParser::new(signed_mapping()).parse(csv.as_bytes()).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "externalRef");
+    }
+
+    #[test]
+    fn missing_column_index_is_an_error() {
+        let mapping = CsvMapping {
+            has_header: false,
+            delimiter: b',',
+            external_ref: ColRef::Index(0),
+            value_date: ColRef::Index(1),
+            date_format: "%Y-%m-%d".into(),
+            amount: AmountMapping::Signed { column: ColRef::Index(9), debit_when_negative: true },
+            description: ColRef::Index(2),
+            currency: None,
+            counterparty: None,
+        };
+        let csv = "R1,2026-05-10,Coffee\n";
+        let errs = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].field, "amount");
     }
 }
