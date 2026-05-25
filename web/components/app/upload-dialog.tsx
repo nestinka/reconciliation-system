@@ -1,0 +1,328 @@
+"use client";
+import { useState } from "react";
+import { toast } from "sonner";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useApi } from "@/lib/api/provider";
+import { useTenant } from "@/lib/providers/tenant-provider";
+import { IngestError } from "@/lib/api/client";
+import type {
+  SourceListItem,
+  IngestFormat,
+  CsvMapping,
+  AmountMapping,
+} from "@/lib/api/client";
+
+export function UploadDialog({
+  source,
+  open,
+  onOpenChange,
+}: {
+  source: SourceListItem;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const api = useApi();
+  const { tenantId } = useTenant();
+  const queryClient = useQueryClient();
+  const [format, setFormat] = useState<IngestFormat>("csv");
+  const [file, setFile] = useState<File | null>(null);
+  const [report, setReport] = useState<{
+    kind: "parse" | "duplicate";
+    rows?: { row: number; field: string; message: string }[];
+    refs?: string[];
+  } | null>(null);
+
+  // CSV mapping fields (indices, 0-based)
+  const [hasHeader, setHasHeader] = useState(true);
+  const [delimiter, setDelimiter] = useState(44);
+  const [dateFormat, setDateFormat] = useState("%Y-%m-%d");
+  const [refCol, setRefCol] = useState(0);
+  const [dateCol, setDateCol] = useState(1);
+  const [descCol, setDescCol] = useState(4);
+  const [amountKind, setAmountKind] = useState<"signed" | "debitCredit">("signed");
+  const [amountCol, setAmountCol] = useState(2);
+  const [debitWhenNegative, setDebitWhenNegative] = useState(true);
+  const [debitCol, setDebitCol] = useState(2);
+  const [creditCol, setCreditCol] = useState(3);
+
+  const buildMapping = (): CsvMapping => {
+    const amount: AmountMapping =
+      amountKind === "signed"
+        ? { signed: { column: { index: amountCol }, debitWhenNegative } }
+        : {
+            debitCredit: {
+              debit: { index: debitCol },
+              credit: { index: creditCol },
+            },
+          };
+    return {
+      hasHeader,
+      delimiter,
+      externalRef: { index: refCol },
+      valueDate: { index: dateCol },
+      dateFormat,
+      amount,
+      description: { index: descCol },
+    };
+  };
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      if (!file) throw new Error("No file selected");
+      return api.ingestFile(
+        tenantId,
+        source.id,
+        format,
+        file,
+        format === "csv" ? buildMapping() : undefined
+      );
+    },
+    onSuccess: (res) => {
+      setReport(null);
+      void queryClient.invalidateQueries({ queryKey: ["sources", tenantId] });
+      toast.success(
+        `${res.ingested} transaction${res.ingested === 1 ? "" : "s"} ingested.`
+      );
+      onOpenChange(false);
+    },
+    onError: (e) => {
+      if (e instanceof IngestError)
+        setReport({ kind: e.code, rows: e.rows, refs: e.refs });
+      else toast.error("Ingestion failed.");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Upload to {source.name}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="up-format">Format</Label>
+            <Select
+              value={format}
+              onValueChange={(v) => setFormat(v as IngestFormat)}
+            >
+              <SelectTrigger id="up-format">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">CSV</SelectItem>
+                <SelectItem value="camt053">CAMT.053 (XML)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="up-file">File</Label>
+            <Input
+              id="up-file"
+              type="file"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              accept={
+                format === "csv"
+                  ? ".csv,text/csv"
+                  : ".xml,text/xml,application/xml"
+              }
+            />
+          </div>
+
+          {format === "csv" && (
+            <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+              <p className="text-xs text-muted-foreground">
+                Map CSV columns (0-based index).
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={hasHeader}
+                  onCheckedChange={(c) => setHasHeader(!!c)}
+                />
+                Has header row
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <NumberField
+                  label="Reference col"
+                  value={refCol}
+                  onChange={setRefCol}
+                  id="m-ref"
+                />
+                <NumberField
+                  label="Date col"
+                  value={dateCol}
+                  onChange={setDateCol}
+                  id="m-date"
+                />
+                <NumberField
+                  label="Description col"
+                  value={descCol}
+                  onChange={setDescCol}
+                  id="m-desc"
+                />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="m-delim">Delimiter</Label>
+                  <Select
+                    value={String(delimiter)}
+                    onValueChange={(v) => setDelimiter(Number(v))}
+                  >
+                    <SelectTrigger id="m-delim">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="44">Comma</SelectItem>
+                      <SelectItem value="59">Semicolon</SelectItem>
+                      <SelectItem value="9">Tab</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="m-dfmt">Date format</Label>
+                <Input
+                  id="m-dfmt"
+                  value={dateFormat}
+                  onChange={(e) => setDateFormat(e.target.value)}
+                  placeholder="%Y-%m-%d"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="m-amtkind">Amount encoding</Label>
+                <Select
+                  value={amountKind}
+                  onValueChange={(v) =>
+                    setAmountKind(v as "signed" | "debitCredit")
+                  }
+                >
+                  <SelectTrigger id="m-amtkind">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="signed">
+                      Single signed column
+                    </SelectItem>
+                    <SelectItem value="debitCredit">
+                      Separate debit/credit columns
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {amountKind === "signed" ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <NumberField
+                    label="Amount col"
+                    value={amountCol}
+                    onChange={setAmountCol}
+                    id="m-amt"
+                  />
+                  <label className="flex items-center gap-2 text-sm mt-6">
+                    <Checkbox
+                      checked={debitWhenNegative}
+                      onCheckedChange={(c) => setDebitWhenNegative(!!c)}
+                    />
+                    Negative = debit
+                  </label>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <NumberField
+                    label="Debit col"
+                    value={debitCol}
+                    onChange={setDebitCol}
+                    id="m-debit"
+                  />
+                  <NumberField
+                    label="Credit col"
+                    value={creditCol}
+                    onChange={setCreditCol}
+                    id="m-credit"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {report && (
+            <div
+              role="alert"
+              className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm text-danger max-h-40 overflow-auto"
+            >
+              {report.kind === "parse" ? (
+                <>
+                  <p className="font-medium mb-1">
+                    File rejected — fix these rows:
+                  </p>
+                  <ul className="list-disc pl-4">
+                    {report.rows?.map((r, i) => (
+                      <li key={i}>
+                        Row {r.row}: {r.field} — {r.message}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="font-medium mb-1">
+                    Duplicate references already loaded:
+                  </p>
+                  <p>{report.refs?.join(", ")}</p>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={!file || mutation.isPending}
+          >
+            {mutation.isPending ? "Uploading…" : "Upload"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  onChange,
+  id,
+}: {
+  label: string;
+  value: number;
+  onChange: (n: number) => void;
+  id: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        type="number"
+        min={0}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </div>
+  );
+}
