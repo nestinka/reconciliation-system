@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { HttpApiClient } from "./http";
+import { IngestError } from "./client";
 import * as tokenStore from "@/lib/auth/token-store";
 
 const okJson = (body: unknown) =>
@@ -93,5 +94,16 @@ describe("HttpApiClient", () => {
 
     const c = new HttpApiClient("http://api.test");
     await expect(c.getDashboard("tenant-acme")).rejects.toThrow(/401/);
+  });
+
+  it("ingestFile throws IngestError on 409 duplicate", async () => {
+    const c = new HttpApiClient("http://api.test");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "duplicate", message: "dup", refs: ["A1"] } }), { status: 409 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["x"], "f.csv", { type: "text/csv" });
+    await expect(c.ingestFile("t", "s", "csv", file, undefined)).rejects.toMatchObject({ code: "duplicate", refs: ["A1"] });
+    expect(IngestError).toBeDefined();
   });
 });
