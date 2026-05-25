@@ -100,7 +100,10 @@ export class IngestError extends Error {
     message: string,
     public rows?: { row: number; field: string; message: string }[],
     public refs?: string[],
-  ) { super(message); }
+  ) {
+    super(message);
+    this.name = "IngestError";
+  }
 }
 
 export interface ApiClient {

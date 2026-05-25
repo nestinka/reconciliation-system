@@ -103,7 +103,8 @@ describe("HttpApiClient", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     const file = new File(["x"], "f.csv", { type: "text/csv" });
-    await expect(c.ingestFile("t", "s", "csv", file, undefined)).rejects.toMatchObject({ code: "duplicate", refs: ["A1"] });
-    expect(IngestError).toBeDefined();
+    const err = await c.ingestFile("t", "s", "csv", file, undefined).catch((e) => e);
+    expect(err).toBeInstanceOf(IngestError);
+    expect(err).toMatchObject({ code: "duplicate", refs: ["A1"] });
   });
 });
