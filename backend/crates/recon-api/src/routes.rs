@@ -302,6 +302,15 @@ async fn ingest_source(
             recon_ingest::csv::CsvParser::new(mapping).parse(&bytes)
         }
         "camt053" => recon_ingest::camt053::Camt053Parser.parse(&bytes),
+        "mt940" => {
+            // Source's stored dialect picks the parser variant. NULL → Generic.
+            let dialect = match source.format_dialect.as_deref() {
+                Some("subfielded") => recon_ingest::mt940::Mt940Dialect::Subfielded,
+                _ => recon_ingest::mt940::Mt940Dialect::Generic,
+            };
+            recon_ingest::mt940::Mt940Parser { dialect }.parse(&bytes)
+        }
+        "bai2" => recon_ingest::bai2::Bai2Parser.parse(&bytes),
         _ => return Err(ApiError::BadRequest()),
     };
 

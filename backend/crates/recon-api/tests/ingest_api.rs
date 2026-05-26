@@ -168,6 +168,176 @@ async fn ingest_missing_format_is_bad_request(pool: sqlx::PgPool) {
     assert_eq!(st, StatusCode::BAD_REQUEST);
 }
 
+// POST /auth/login as the given seeded user; returns just the accessToken.
+async fn login_as(app: &axum::Router, email: &str, password: &str) -> String {
+    let body = serde_json::json!({ "email": email, "password": password });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK, "login_as: expected 200");
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let v: Value = serde_json::from_slice(&bytes).unwrap();
+    v["accessToken"]
+        .as_str()
+        .expect("accessToken in /auth/login response")
+        .to_string()
+}
+
+const MT940_FIXTURE: &[u8] = b":20:REF20250601
+:25:GB29NWBK60161331926819
+:28C:00123/00001
+:60F:C250601GBP1000,00
+:61:250601D100,00NTRFBANKREF-1//BNKREF-A
+:86:Counterparty payment
+:62F:C250601GBP900,00
+";
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mt940_happy_path_ingest(pool: sqlx::PgPool) {
+    recon_store::Store::from_pool(pool.clone())
+        .seed()
+        .await
+        .unwrap();
+    let (app, _cfg) = recon_api::test_app(pool.clone());
+    let token = login_as(&app, "ada@acme.test", "Password123!").await;
+
+    // Create a source with format_dialect = subfielded.
+    let body = serde_json::json!({
+        "kind": "bank", "name": "MT940 Test", "currency": "GBP", "formatDialect": "subfielded"
+    });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/sources")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let src: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    // Upload an MT940 file via multipart.
+    let boundary = "----recon-test";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\nmt940\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"acme.sta\"\r\nContent-Type: application/octet-stream\r\n\r\n{}\r\n--{boundary}--\r\n",
+        std::str::from_utf8(MT940_FIXTURE).unwrap()
+    );
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/sources/{src_id}/ingest"))
+                .header("authorization", format!("Bearer {token}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["ingested"], 1);
+}
+
+const BAI2_FIXTURE: &[u8] = b"01,SENDR,RCVR,250601,0930,12345,80,2,2/
+02,ACME,SENDR,1,250601,0930,USD,2/
+03,123456789,USD,010,500000,,,015,500000,,/
+16,175,25000,V,CUSTREF-1,BNKREF-A,Deposit from customer/
+49,25000,2/
+98,25000,1,3/
+99,25000,1,5/
+";
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn bai2_happy_path_ingest(pool: sqlx::PgPool) {
+    recon_store::Store::from_pool(pool.clone())
+        .seed()
+        .await
+        .unwrap();
+    let (app, _cfg) = recon_api::test_app(pool.clone());
+    let token = login_as(&app, "ada@acme.test", "Password123!").await;
+
+    // Create a source — no dialect (BAI2 has no variants).
+    let body = serde_json::json!({
+        "kind": "bank", "name": "BAI2 Test", "currency": "USD"
+    });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/sources")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let src: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    // Upload a BAI2 file.
+    let boundary = "----recon-test";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\nbai2\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"acme.bai\"\r\nContent-Type: application/octet-stream\r\n\r\n{}\r\n--{boundary}--\r\n",
+        std::str::from_utf8(BAI2_FIXTURE).unwrap()
+    );
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/sources/{src_id}/ingest"))
+                .header("authorization", format!("Bearer {token}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["ingested"], 1);
+}
+
 #[sqlx::test(migrations = "../../migrations")]
 async fn cross_tenant_ingest_is_not_found(pool: sqlx::PgPool) {
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme'),('tenant-globex','Globex','globex')").execute(&pool).await.unwrap();
