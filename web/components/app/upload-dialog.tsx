@@ -52,6 +52,9 @@ export function UploadDialog({
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    if (!open) {
+      setFormat("csv");
+    }
     setFile(null);
     setReport(null);
   }, [open]);
@@ -139,11 +142,20 @@ export function UploadDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="csv">CSV</SelectItem>
-                <SelectItem value="camt053">CAMT.053 (XML)</SelectItem>
+                <SelectItem value="csv">CSV (with column mapping)</SelectItem>
+                <SelectItem value="camt053">CAMT.053 (ISO 20022 XML)</SelectItem>
+                <SelectItem value="mt940">MT940 (SWIFT statement)</SelectItem>
+                <SelectItem value="bai2">BAI v2 (US bank file)</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {format === "mt940" && !source.formatDialect && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              This source has no MT940 dialect set. Using{" "}
+              <strong>Generic</strong>. Edit the source to choose a dialect.
+            </p>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="up-file">File</Label>
@@ -151,11 +163,7 @@ export function UploadDialog({
               id="up-file"
               type="file"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              accept={
-                format === "csv"
-                  ? ".csv,text/csv"
-                  : ".xml,text/xml,application/xml"
-              }
+              accept={fileAccept(format)}
             />
           </div>
 
@@ -312,6 +320,19 @@ export function UploadDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function fileAccept(format: IngestFormat): string {
+  switch (format) {
+    case "csv":
+      return ".csv,text/csv";
+    case "camt053":
+      return ".xml,text/xml,application/xml";
+    case "mt940":
+      return ".mt940,.sta,.txt,text/plain";
+    case "bai2":
+      return ".bai,.bai2,.txt,text/plain";
+  }
 }
 
 function NumberField({
