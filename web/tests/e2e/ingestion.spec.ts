@@ -120,3 +120,76 @@ test("operator ingests two files and creates a run", async ({ page }) => {
   // After run creation the app navigates to the run detail page
   await expect(page).toHaveURL(/\/runs\/run-/, { timeout: 20_000 });
 });
+
+test("admin creates an MT940 source with subfielded dialect and ingests", async ({
+  page,
+}) => {
+  await loginViaUI(page, ADA_EMAIL, PASSWORD);
+
+  // ── Create an MT940 bank source with subfielded dialect ──────────────────
+  await page.goto("/sources");
+  await page.getByRole("button", { name: /new source/i }).click();
+
+  const newSourceDialog = page.getByRole("dialog");
+  await expect(newSourceDialog).toBeVisible();
+
+  await newSourceDialog.getByLabel("Name").fill("MT940 Acme E2E");
+  await newSourceDialog.getByLabel("Currency").fill("GBP");
+
+  // Dialect select is a Base UI Select (combobox role). Click trigger, then option.
+  await newSourceDialog
+    .getByRole("combobox", { name: /mt940 dialect/i })
+    .click();
+  await page.getByRole("option", { name: /Subfielded/i }).click();
+
+  await newSourceDialog
+    .getByRole("button", { name: /create source/i })
+    .click();
+
+  // Dialog closes; source row appears with the dialect badge
+  await expect(newSourceDialog).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("cell", { name: /MT940 Acme E2E/ })).toBeVisible();
+  await expect(page.getByText(/MT940 · Subfielded/i)).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // ── Upload an MT940 file into the new source ─────────────────────────────
+  // Scope to the new row to avoid clashing with other rows' Upload buttons.
+  await page
+    .getByRole("row", { name: /MT940 Acme E2E/ })
+    .getByRole("button", { name: /upload/i })
+    .click();
+
+  const uploadDialog = page.getByRole("dialog");
+  await expect(uploadDialog).toBeVisible();
+
+  // Switch format to MT940 via the combobox.
+  await uploadDialog.getByRole("combobox", { name: "Format" }).click();
+  await page.getByRole("option", { name: /^MT940/i }).click();
+
+  // Attach an MT940 statement (subfielded fixture from backend integration tests).
+  const mt940Body =
+    ":20:REF20250601\n" +
+    ":25:GB29NWBK60161331926819\n" +
+    ":28C:00123/00001\n" +
+    ":60F:C250601GBP1000,00\n" +
+    ":61:250601D100,00NTRFBANKREF-1//BNKREF-A\n" +
+    ":86:Counterparty payment\n" +
+    ":62F:C250601GBP900,00\n";
+
+  await uploadDialog.getByLabel("File").setInputFiles({
+    name: "acme.sta",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(mt940Body, "utf-8"),
+  });
+
+  await uploadDialog.getByRole("button", { name: /^upload$/i }).click();
+
+  // Success toast: "1 transaction ingested." (matches upload-dialog onSuccess)
+  await expect(page.getByText(/1 transaction ingested/i)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Dialog closes after success
+  await expect(uploadDialog).not.toBeVisible({ timeout: 10_000 });
+});
