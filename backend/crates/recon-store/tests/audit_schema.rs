@@ -177,3 +177,35 @@ async fn create_source_emits_audit(pool: sqlx::PgPool) {
     ).fetch_one(&store.pool).await.unwrap();
     assert_eq!(n, 1);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_create_user_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('admin','Admin','a@x',false)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('admin','t','admin')")
+        .execute(&store.pool).await.unwrap();
+    // dummy hash; not verified here
+    let hash = "$argon2id$v=19$m=19456,t=2,p=1$abc$def".to_string();
+    store
+        .create_user_with_membership(
+            "u-bob",
+            "Bob",
+            "bob@x",
+            &hash,
+            "t",
+            recon_domain::UserRole::Operator,
+            "admin",
+        )
+        .await
+        .unwrap();
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='admin.user.created'",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+}

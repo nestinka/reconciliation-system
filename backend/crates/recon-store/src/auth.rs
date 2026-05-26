@@ -323,6 +323,7 @@ impl Store {
             .collect())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_user_with_membership(
         &self,
         id: &str,
@@ -331,6 +332,7 @@ impl Store {
         password_hash: &str,
         tenant_id: &str,
         role: UserRole,
+        actor_id: &str,
     ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
         sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ($1,$2,$3,false)")
@@ -358,6 +360,17 @@ impl Store {
             .execute(&mut *tx)
             .await
             .map_err(StoreError::from)?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserCreated {
+                user_id: id.to_string(),
+                email: email.to_string(),
+                role: role_str(role).to_string(),
+            },
+        )
+        .await?;
         tx.commit().await.map_err(StoreError::from)?;
         Ok(())
     }
@@ -367,15 +380,42 @@ impl Store {
         user_id: &str,
         tenant_id: &str,
         role: UserRole,
+        actor_id: &str,
     ) -> Result<u64, StoreError> {
-        let r =
-            sqlx::query("UPDATE memberships SET role=$3 WHERE user_id=$1 AND tenant_id=$2")
-                .bind(user_id)
-                .bind(tenant_id)
-                .bind(role_str(role))
-                .execute(&self.pool)
-                .await
-                .map_err(StoreError::from)?;
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
+        // Fetch the current role inside the tx for atomicity. If the membership
+        // doesn't exist we return 0 without emitting an audit.
+        let current: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM memberships WHERE user_id=$1 AND tenant_id=$2 FOR UPDATE",
+        )
+        .bind(user_id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StoreError::from)?;
+        let Some(from_role) = current else {
+            return Ok(0);
+        };
+        let to_role = role_str(role).to_string();
+        let r = sqlx::query("UPDATE memberships SET role=$3 WHERE user_id=$1 AND tenant_id=$2")
+            .bind(user_id)
+            .bind(tenant_id)
+            .bind(role_str(role))
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::from)?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserRoleChanged {
+                user_id: user_id.to_string(),
+                from: from_role,
+                to: to_role,
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(r.rows_affected())
     }
 
@@ -383,13 +423,27 @@ impl Store {
         &self,
         user_id: &str,
         disabled: bool,
+        tenant_id: &str,
+        actor_id: &str,
     ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
         sqlx::query("UPDATE users SET disabled=$2 WHERE id=$1")
             .bind(user_id)
             .bind(disabled)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(StoreError::from)?;
+        let payload = if disabled {
+            recon_audit::AuditPayload::AdminUserDisabled {
+                user_id: user_id.to_string(),
+            }
+        } else {
+            recon_audit::AuditPayload::AdminUserEnabled {
+                user_id: user_id.to_string(),
+            }
+        };
+        self.append_audit(&mut tx, tenant_id, actor_id, payload).await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(())
     }
 
@@ -397,14 +451,30 @@ impl Store {
         &self,
         user_id: &str,
         tenant_id: &str,
+        actor_id: &str,
     ) -> Result<u64, StoreError> {
-        let r =
-            sqlx::query("DELETE FROM memberships WHERE user_id=$1 AND tenant_id=$2")
-                .bind(user_id)
-                .bind(tenant_id)
-                .execute(&self.pool)
-                .await
-                .map_err(StoreError::from)?;
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
+        let r = sqlx::query("DELETE FROM memberships WHERE user_id=$1 AND tenant_id=$2")
+            .bind(user_id)
+            .bind(tenant_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::from)?;
+        if r.rows_affected() == 0 {
+            // Nothing removed → no audit, just commit (no-op) for symmetry.
+            tx.commit().await.map_err(StoreError::from)?;
+            return Ok(0);
+        }
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserRemoved {
+                user_id: user_id.to_string(),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(r.rows_affected())
     }
 
