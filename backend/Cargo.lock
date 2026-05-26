@@ -1460,6 +1460,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-extra",
+ "hex",
  "http-body-util",
  "recon-auth",
  "recon-domain",
@@ -1469,6 +1470,7 @@ dependencies = [
  "recon-store",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "time",
  "tokio",

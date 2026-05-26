@@ -10,6 +10,7 @@ use axum::{
 use recon_ingest::Parser;
 use recon_store::read::{BreakFilter, RunFilter};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 pub fn router(state: AppState) -> Router {
     let mut r = Router::new()
@@ -214,7 +215,7 @@ async fn create_source(
     }
     let src = s
         .store
-        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency)
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id)
         .await?;
     Ok(Json(json!(src)))
 }
@@ -242,7 +243,15 @@ async fn create_run(
     }
     let run = s
         .store
-        .create_run(&ctx.tenant_id, &body.name, &body.source_a_id, &body.source_b_id, &body.from, &body.to)
+        .create_run(
+            &ctx.tenant_id,
+            &body.name,
+            &body.source_a_id,
+            &body.source_b_id,
+            &body.from,
+            &body.to,
+            &ctx.user_id,
+        )
         .await?;
     Ok(Json(json!(run)))
 }
@@ -317,6 +326,21 @@ async fn ingest_source(
         })
         .collect();
 
-    let n = s.store.ingest_transactions(&ctx.tenant_id, &source_id, &txns).await?;
+    // Hash the EXACT bytes consumed by the parser so the audit row pins the
+    // file content the ingest actually persisted.
+    let file_sha256 = hex::encode(Sha256::digest(&bytes));
+    let file_bytes_len = bytes.len() as i64;
+    let n = s
+        .store
+        .ingest_transactions(
+            &ctx.tenant_id,
+            &source_id,
+            &txns,
+            &ctx.user_id,
+            &file_sha256,
+            &format,
+            file_bytes_len,
+        )
+        .await?;
     Ok(Json(json!({ "ingested": n, "sourceId": source_id })))
 }

@@ -166,3 +166,14 @@ async fn assign_break_emits_audit(pool: sqlx::PgPool) {
     .fetch_one(&store.pool).await.unwrap();
     assert_eq!(n, 1, "case.assigned audit emitted");
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_source_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')").execute(&store.pool).await.unwrap();
+    store.create_source("t", recon_domain::SourceKind::Bank, "S", "GBP", "actor").await.unwrap();
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='data.source.created'",
+    ).fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n, 1);
+}

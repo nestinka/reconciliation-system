@@ -66,6 +66,7 @@ impl Store {
 
     /// Create a run reconciling two sources over a date window. Loads both
     /// windows, runs the matching engine, and persists everything atomically.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_run(
         &self,
         tenant_id: &str,
@@ -74,6 +75,7 @@ impl Store {
         source_b_id: &str,
         from: &str,
         to: &str,
+        actor_id: &str,
     ) -> Result<ReconciliationRun, StoreError> {
         // Both sources must belong to the caller's tenant.
         self.get_source(tenant_id, source_a_id).await?;
@@ -91,6 +93,22 @@ impl Store {
         let result = reconcile(&a, &b, &cfg);
         self.persist_run(&mut tx, &run_id, tenant_id, name, source_a_id, source_b_id, &started, &result, &cfg)
             .await?;
+        // Audit row inside the same tx — rolls back with the run if anything below fails.
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::DataRunCreated {
+                run_id: run_id.clone(),
+                source_a_id: source_a_id.to_string(),
+                source_b_id: source_b_id.to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
+                matched: result.stats.matched,
+                unmatched: result.stats.unmatched,
+            },
+        )
+        .await?;
         tx.commit().await?;
 
         Ok(ReconciliationRun {
