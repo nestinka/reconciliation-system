@@ -52,6 +52,7 @@ export function buildFixtures(): Fixtures {
       kind: "bank",
       name: "Acme Bank Statement",
       currency: "GBP",
+      formatDialect: null,
     },
     {
       id: "src-acme-ledger",
@@ -59,6 +60,7 @@ export function buildFixtures(): Fixtures {
       kind: "ledger",
       name: "Acme General Ledger",
       currency: "GBP",
+      formatDialect: null,
     },
     {
       id: "src-acme-cross",
@@ -66,6 +68,7 @@ export function buildFixtures(): Fixtures {
       kind: "cross_system",
       name: "Acme Cross-System Feed",
       currency: "USD",
+      formatDialect: null,
     },
     // Globex Markets sources
     {
@@ -74,6 +77,7 @@ export function buildFixtures(): Fixtures {
       kind: "bank",
       name: "Globex Bank Statement",
       currency: "USD",
+      formatDialect: null,
     },
     {
       id: "src-globex-ledger",
@@ -81,6 +85,7 @@ export function buildFixtures(): Fixtures {
       kind: "ledger",
       name: "Globex General Ledger",
       currency: "USD",
+      formatDialect: null,
     },
     {
       id: "src-globex-cross",
@@ -88,6 +93,7 @@ export function buildFixtures(): Fixtures {
       kind: "cross_system",
       name: "Globex Cross-System Feed",
       currency: "GBP",
+      formatDialect: null,
     },
   ];
 

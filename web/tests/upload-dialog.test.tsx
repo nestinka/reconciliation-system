@@ -25,6 +25,7 @@ const MOCK_SOURCE: SourceListItem = {
   kind: "bank",
   name: "Test Bank",
   currency: "GBP",
+  formatDialect: null,
   txnCount: 0,
 };
 

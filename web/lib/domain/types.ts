@@ -18,12 +18,16 @@ export type Tenant = z.infer<typeof tenantSchema>;
 export const sourceKindSchema = z.enum(["bank", "ledger", "cross_system"]);
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
+export const formatDialectSchema = z.enum(["generic", "subfielded"]);
+export type FormatDialect = z.infer<typeof formatDialectSchema>;
+
 export const sourceSchema = z.object({
   id: z.string(),
   tenantId: z.string(),
   kind: sourceKindSchema,
   name: z.string(),
   currency: z.string(),
+  formatDialect: formatDialectSchema.nullable(),
 });
 export type Source = z.infer<typeof sourceSchema>;
 
