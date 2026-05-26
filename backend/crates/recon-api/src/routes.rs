@@ -219,9 +219,16 @@ async fn create_source(
     if body.name.trim().is_empty() || body.currency.trim().len() != 3 {
         return Err(ApiError::BadRequest());
     }
+    // Validate format_dialect.
+    let dialect: Option<&str> = match body.format_dialect.as_deref() {
+        None => None,
+        Some("generic") => Some("generic"),
+        Some("subfielded") => Some("subfielded"),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
     let src = s
         .store
-        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, None)
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, dialect)
         .await?;
     Ok(Json(json!(src)))
 }
