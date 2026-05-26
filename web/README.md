@@ -82,6 +82,26 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
 
 Supported formats this slice: CSV (configurable mapping) and CAMT.053 (ISO 20022 XML).
 
+### Compliance audit log
+
+Sign in as an admin (`ada@acme.test`) and visit:
+
+- **Audit** — every material action recorded in a per-tenant hash-chained log
+  (SHA-256 with `prev_hash` and `hash` on every row). Filter by kind/actor/date;
+  click **Verify chain** to walk a range and confirm integrity; click **Anchor now**
+  to write a global anchor that ties every tenant's current head into the anchor
+  chain. The backend also runs an internal anchor scheduler every
+  `AUDIT_ANCHOR_INTERVAL_SECS` (default 3600).
+- **Controls** — ISO 27001 / SOC 2 / FCA control items mapped to the audit-event
+  kinds that demonstrate them. Clicking a row jumps to the audit log filtered to
+  that control's events.
+
+Every material action emits an audit row INSIDE the same transaction as the action
+itself — so if the audit insert fails (e.g. a chain race), the action rolls back.
+That same-tx guarantee is what makes the chain meaningful.
+
+The auditor-facing description of each control lives in `docs/compliance/controls.md`.
+
 ### Running the E2E against the live stack
 With Postgres up and `RECON_DEV=1 ... cargo run -p recon-api` serving on :8080:
 ```bash
