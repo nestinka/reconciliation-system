@@ -109,6 +109,7 @@ pub struct SourceRow {
     pub kind: String,
     pub name: String,
     pub currency: String,
+    pub format_dialect: Option<String>,
 }
 impl From<SourceRow> for Source {
     fn from(r: SourceRow) -> Self {
@@ -118,6 +119,7 @@ impl From<SourceRow> for Source {
             kind: parse_source_kind(&r.kind),
             name: r.name,
             currency: r.currency,
+            format_dialect: r.format_dialect,
         }
     }
 }

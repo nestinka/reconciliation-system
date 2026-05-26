@@ -105,6 +105,7 @@ pub struct Source {
     pub kind: SourceKind,
     pub name: String,
     pub currency: String,
+    pub format_dialect: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -196,6 +197,7 @@ mod tests {
             kind: SourceKind::CrossSystem,
             name: "Acme Cross".into(),
             currency: "USD".into(),
+            format_dialect: None,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["tenantId"], "tenant-acme");

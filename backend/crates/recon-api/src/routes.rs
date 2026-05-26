@@ -221,7 +221,7 @@ async fn create_source(
     }
     let src = s
         .store
-        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id)
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, None)
         .await?;
     Ok(Json(json!(src)))
 }
