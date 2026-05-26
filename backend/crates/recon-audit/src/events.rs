@@ -17,6 +17,9 @@ pub enum AuditKind {
     SystemAnchorCreated,
 }
 
+// `from_str` returns `Option<Self>`, not `Result`, by deliberate plan choice — the api
+// layer wraps the None in its own error envelope. Silence clippy's FromStr-trait warning.
+#[allow(clippy::should_implement_trait)]
 impl AuditKind {
     /// Stable string identifier used in DB rows and on the wire.
     pub fn as_str(&self) -> &'static str {
