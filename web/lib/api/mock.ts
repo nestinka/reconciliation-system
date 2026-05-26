@@ -440,7 +440,14 @@ export class MockApiClient implements ApiClient {
 
   async createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
     await this.delay();
-    const src: Source = { id: `src-${nextId()}`, tenantId, kind: input.kind, name: input.name, currency: input.currency };
+    const src: Source = {
+      id: `src-${nextId()}`,
+      tenantId,
+      kind: input.kind,
+      name: input.name,
+      currency: input.currency,
+      formatDialect: input.formatDialect ?? null,
+    };
     this.state.sources.push(deepClone(src));
     return src;
   }

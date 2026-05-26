@@ -14,7 +14,11 @@ import type {
   CanonicalTransaction,
   Source,
   SourceKind,
+  FormatDialect,
 } from "@/lib/domain/types";
+
+// Re-export FormatDialect so callers can import it from the API surface.
+export type { FormatDialect } from "@/lib/domain/types";
 
 export interface DashboardSummary {
   matchRatePct: number;
@@ -72,8 +76,16 @@ export interface UpdateUserPatch {
 }
 
 export interface SourceListItem extends Source { txnCount: number }
-export interface CreateSourceInput { kind: SourceKind; name: string; currency: string }
-export type IngestFormat = "csv" | "camt053";
+export interface CreateSourceInput {
+  kind: SourceKind;
+  name: string;
+  currency: string;
+  // Optional on input; defaults to null when omitted. Only meaningful for bank
+  // sources ingested via MT940 ("generic" | "subfielded") — other formats leave
+  // it null.
+  formatDialect?: FormatDialect | null;
+}
+export type IngestFormat = "csv" | "camt053" | "mt940" | "bai2";
 export interface IngestResult { ingested: number; sourceId: string }
 export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
 

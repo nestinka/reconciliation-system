@@ -138,4 +138,25 @@ describe("MockApiClient", () => {
     expect(frameworks).toContain("SOC 2");
     expect(frameworks).toContain("FCA");
   });
+
+  it("createSource round-trips formatDialect", async () => {
+    const c = new MockApiClient({ latencyMs: 0 });
+    const src = await c.createSource("tenant-acme", {
+      kind: "bank",
+      name: "MT940 Acme",
+      currency: "GBP",
+      formatDialect: "subfielded",
+    });
+    expect(src.formatDialect).toBe("subfielded");
+  });
+
+  it("createSource without formatDialect defaults to null", async () => {
+    const c = new MockApiClient({ latencyMs: 0 });
+    const src = await c.createSource("tenant-acme", {
+      kind: "bank",
+      name: "Plain",
+      currency: "GBP",
+    });
+    expect(src.formatDialect).toBeNull();
+  });
 });
