@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ListChecks, TriangleAlert, Scale, Users, Database, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, ListChecks, TriangleAlert, Scale, Users, Database, ShieldCheck, ClipboardCheck, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth/auth-provider";
 
@@ -19,6 +19,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/sources", label: "Sources", icon: Database },
   { href: "/exceptions", label: "Exceptions", icon: TriangleAlert },
   { href: "/users", label: "Users", icon: Users, adminOnly: true },
+  { href: "/audit", label: "Audit", icon: ShieldCheck, adminOnly: true },
+  { href: "/controls", label: "Controls", icon: ClipboardCheck, adminOnly: true },
 ];
 
 export function AppSidebar() {
