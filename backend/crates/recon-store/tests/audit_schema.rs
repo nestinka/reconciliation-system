@@ -137,3 +137,32 @@ async fn anchor_now_writes_anchor_and_per_tenant_event(pool: sqlx::PgPool) {
     assert_eq!(anchors.len(), 1);
     assert_eq!(anchors[0].anchor_seq, 1);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn assign_break_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    // Seed minimal tenant/user/membership/case/break.
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('u1','U','u@x',false),('u2','V','v@x',false)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('u1','t','operator'),('u2','t','approver')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency) VALUES ('s','t','bank','S','GBP')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO reconciliation_runs(id,tenant_id,name,source_a_id,source_b_id,status,started_at,completed_at,config_version,stats) VALUES ('r','t','R','s','s','completed', now(), now(), 'v1', '{}'::jsonb)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO cases(id,tenant_id,break_id,status) VALUES ('c','t','b','open')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO breaks(id,tenant_id,run_id,case_id,type,status,value_minor,currency,txn_ids,opened_at) VALUES ('b','t','r','c','unmatched','open',0,'GBP','{}', now())")
+        .execute(&store.pool).await.unwrap();
+
+    // Signature: assign_break(tenant_id, break_id, assignee_id, actor_id).
+    store.assign_break("t", "b", "u2", "u1").await.unwrap();
+
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='case.assigned'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n, 1, "case.assigned audit emitted");
+}
