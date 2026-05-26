@@ -1,12 +1,16 @@
 //! Closed set of audit event kinds + their typed payloads.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LoginFailureReason { BadCredentials, Locked, RateLimited }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+// Hand-written Serialize/Deserialize on AuditKind that uses the dot-notation strings
+// (`auth.login.success` etc.) on the wire. The default derive would emit PascalCase
+// (`AuthLoginSuccess`) — that mismatched the wire contract the frontend expects, and
+// was caught by an E2E run against the controls endpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AuditKind {
     AuthLoginSuccess, AuthLoginFailure, AuthLockout, AuthLogout,
     AuthPasswordChanged, AuthPasswordResetRequested, AuthPasswordResetCompleted,
@@ -47,6 +51,7 @@ impl AuditKind {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s {
             "auth.login.success" => AuditKind::AuthLoginSuccess,
@@ -71,6 +76,19 @@ impl AuditKind {
             "system.anchor.created" => AuditKind::SystemAnchorCreated,
             _ => return None,
         })
+    }
+}
+
+impl Serialize for AuditKind {
+    fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
+        ser.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for AuditKind {
+    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        let s = <&str>::deserialize(de)?;
+        AuditKind::from_str(s).ok_or_else(|| serde::de::Error::custom(format!("unknown audit kind: {s}")))
     }
 }
 

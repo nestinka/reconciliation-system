@@ -35,7 +35,9 @@ test("admin verifies the audit chain and anchors", async ({ page }) => {
   ).toBeVisible({ timeout: 10_000 });
 
   // Close the dialog so the underlying "Anchor now" button is clickable.
-  await page.getByRole("button", { name: /^close$/i }).click();
+  // Scope to the dialog — there's an explicit footer button and a header
+  // icon button, both labelled "Close"; the dialog-scoped one is correct.
+  await page.getByRole("dialog").getByRole("button", { name: /^close$/i }).first().click();
 
   // ---------------------------------------------------------------------
   // Anchor now -> sonner toast "Anchored at seq <N>".
