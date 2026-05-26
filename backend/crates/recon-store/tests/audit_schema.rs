@@ -209,3 +209,45 @@ async fn admin_create_user_emits_audit(pool: sqlx::PgPool) {
     .unwrap();
     assert_eq!(n, 1);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn verify_audit_detects_wholesale_deletion_via_anchor(pool: sqlx::PgPool) {
+    // Setup: seed two audit events for tenant 't', anchor them, then DELETE
+    // the second event (simulating wholesale deletion). The chain-only verify
+    // would walk the surviving row and return `valid`; the anchor cross-check
+    // must catch that the anchored head is gone.
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let mut tx = store.pool.begin().await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u1".into(), ip: None }).await.unwrap();
+    let e2 = store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u2".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    // Anchor at this head (seq=2).
+    let _anchor = store.anchor_now().await.unwrap();
+
+    // After anchoring, the chain also has a `system.anchor.created` row (seq=3).
+    // For the deletion scenario, drop everything from the anchored seq forward
+    // — both the anchored row and the system.anchor.created row.
+    sqlx::query("DELETE FROM audit_events WHERE tenant_id='t' AND seq >= $1")
+        .bind(e2.seq)
+        .execute(&store.pool).await.unwrap();
+
+    let outcome = store.verify_audit("t", None, None, None).await.unwrap();
+    assert_eq!(outcome.status, VerifyStatus::Invalid);
+    // The anchor recorded seq=3 (the system.anchor.created row, now the head);
+    // either that row or seq=2 should be flagged as missing depending on which
+    // the anchor referenced. Both are deletion evidence.
+    assert!(
+        outcome.first_broken_seq.is_some(),
+        "anchor cross-check must surface the missing seq",
+    );
+    assert_eq!(
+        outcome.reason,
+        Some(recon_audit::chain::VerifyReason::Missing),
+        "wholesale deletion must report as Missing"
+    );
+}

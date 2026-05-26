@@ -47,7 +47,10 @@ impl Store {
         let hash = chain::compute_hash(&prev_hash, seq, tenant_id, &at, actor_id, kind, &payload);
 
         // 3. Insert. The composite PK rejects a colliding concurrent insert with 23505;
-        //    the caller's transaction will be retried at the action layer.
+        //    in practice the FOR UPDATE above serializes appenders within a tenant, so
+        //    the only realistic collision window is two concurrent genesis inserts on
+        //    a brand-new tenant. Callers surface the 23505 as a 500 and the client
+        //    retries the whole request — there is no in-store retry loop.
         let payload_json = serde_json::to_value(&payload)?;
         sqlx::query(
             "INSERT INTO audit_events(tenant_id,seq,at,actor_id,kind,payload,prev_hash,hash) \
@@ -174,9 +177,58 @@ impl Store {
             .map(row_to_entry)
             .collect::<Result<_, _>>()?;
         let checked = entries.len() as i64;
-        match recon_audit::chain::verify(&entries, expected_prev_hash) {
-            Ok(()) => Ok(recon_audit::chain::VerifyOutcome::valid(checked)),
-            Err(e) => Ok(recon_audit::chain::VerifyOutcome::invalid(checked, e)),
+        // First: walk the chain itself. If it's already broken, surface that first.
+        if let Err(e) = recon_audit::chain::verify(&entries, expected_prev_hash) {
+            return Ok(recon_audit::chain::VerifyOutcome::invalid(checked, e));
+        }
+        // Then: cross-check against the latest anchor. An anchor locks in this
+        // tenant's head as of anchor-time; if rows after the anchored seq have
+        // been deleted wholesale (and the anchor row preserved or also deleted),
+        // a chain-only verify would still pass. The anchor cross-check catches
+        // the wholesale-deletion case the chain alone can't detect.
+        //
+        // We only cross-check when this is a full-tenant verify (no from/to
+        // restriction) — bounded verifies are explicitly asking about a window
+        // and the anchor's head may legitimately be outside that window.
+        if from_seq.is_none() && to_seq.is_none() {
+            if let Some(anchor_err) = self.cross_check_anchor(tenant_id, &entries).await? {
+                return Ok(recon_audit::chain::VerifyOutcome::invalid(checked, anchor_err));
+            }
+        }
+        Ok(recon_audit::chain::VerifyOutcome::valid(checked))
+    }
+
+    /// Look up the most recent anchor and confirm this tenant's chain still
+    /// includes the row that was anchored. Returns `Some(VerifyError)` if the
+    /// anchor points to a seq the chain has lost or whose hash no longer matches;
+    /// `None` if there's no anchor yet or the anchor is satisfied.
+    async fn cross_check_anchor(
+        &self,
+        tenant_id: &str,
+        entries: &[AuditEntry],
+    ) -> Result<Option<recon_audit::chain::VerifyError>, StoreError> {
+        let row: Option<(serde_json::Value,)> = sqlx::query_as(
+            "SELECT tenant_heads FROM audit_anchors ORDER BY anchor_seq DESC LIMIT 1",
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        let Some((heads,)) = row else { return Ok(None) };
+        let Some(head) = heads.get(tenant_id) else { return Ok(None) };
+        let Some(anchored_seq) = head.get("seq").and_then(|v| v.as_i64()) else { return Ok(None) };
+        let Some(anchored_hash) = head.get("hash").and_then(|v| v.as_str()) else { return Ok(None) };
+
+        // The chain we just walked must contain the anchored (seq, hash) row.
+        let found = entries.iter().find(|e| e.seq == anchored_seq);
+        match found {
+            None => Ok(Some(recon_audit::chain::VerifyError {
+                seq: anchored_seq,
+                reason: recon_audit::chain::VerifyReason::Missing,
+            })),
+            Some(e) if hex::encode(e.hash) != anchored_hash => Ok(Some(recon_audit::chain::VerifyError {
+                seq: anchored_seq,
+                reason: recon_audit::chain::VerifyReason::Tampered,
+            })),
+            Some(_) => Ok(None),
         }
     }
 }
@@ -208,7 +260,12 @@ pub struct Anchor {
 #[serde(rename_all = "camelCase")]
 pub struct TenantHead {
     pub seq: i64,
-    pub hash: Vec<u8>,
+    // Stored as a hex string in the tenant_heads JSONB column so the column is
+    // human-readable AND the wire shape (`hash: string`) matches the frontend's
+    // Anchor type. The anchor hash function feeds this same JSON form to SHA-256,
+    // so the choice is load-bearing — once anchored, the format can't change
+    // without invalidating prior anchors.
+    pub hash: String,
 }
 
 impl Store {
@@ -229,7 +286,7 @@ impl Store {
 
         let mut tenant_heads = BTreeMap::new();
         for (tid, seq, hash) in &head_rows {
-            tenant_heads.insert(tid.clone(), TenantHead { seq: *seq, hash: hash.clone() });
+            tenant_heads.insert(tid.clone(), TenantHead { seq: *seq, hash: hex::encode(hash) });
         }
 
         // 2. Previous anchor.

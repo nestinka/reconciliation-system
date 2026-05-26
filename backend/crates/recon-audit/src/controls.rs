@@ -161,4 +161,24 @@ mod tests {
         let s = serde_json::to_string(c).unwrap();
         assert!(s.contains("\"eventKinds\""), "expected camelCase: {s}");
     }
+
+    #[test]
+    fn event_kinds_serialize_as_dot_notation() {
+        // Regression guard for the `f669bbc` bug: AuditKind must serialize as
+        // dot-notation strings (e.g. "admin.user.created"), NOT PascalCase
+        // variant names (e.g. "AdminUserCreated"). The /api/audit/controls
+        // endpoint serializes Control directly through serde, so the kind
+        // formatting has to come from the AuditKind Serialize impl itself.
+        // CONTROLS[0] is ISO27001:A.9.2.1 (event_kinds starts with AdminUserCreated).
+        let c = &CONTROLS[0];
+        let s = serde_json::to_string(c).unwrap();
+        assert!(
+            s.contains("\"admin.user.created\""),
+            "AuditKind must serialize as dot-notation; got: {s}"
+        );
+        assert!(
+            !s.contains("\"AdminUserCreated\""),
+            "AuditKind must NOT serialize as PascalCase variant name; got: {s}"
+        );
+    }
 }
