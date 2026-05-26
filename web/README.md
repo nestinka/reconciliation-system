@@ -70,17 +70,30 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
 ### Ingesting bank/ledger files
 
 1. Sign in (any role can ingest).
-2. Go to **Sources** → **New source** (give it a name, kind, and currency).
-3. Click **Upload** on the source row, choose **CSV** or **CAMT.053**, pick a file, and
-   (for CSV) map the columns by 0-based index + choose how amounts are encoded
-   (single signed column, or separate debit/credit columns). Bad rows reject the whole
-   file with a per-row report; re-uploading an already-loaded statement is rejected as a
-   duplicate.
+2. Go to **Sources** → **New source** (give it a name, kind, currency, and — if
+   the source will receive MT940 statements — pick the dialect: **Generic** for
+   plain MT940, **Subfielded (DE/NL/BE)** for Deutsche Bank, ING, ABN AMRO,
+   Rabobank, and most other European banks. Leave **Not applicable** for any
+   other format).
+3. Click **Upload** on the source row, choose **CSV**, **CAMT.053**, **MT940**,
+   or **BAI v2**, pick a file, and (for CSV only) map the columns by 0-based
+   index + choose how amounts are encoded (single signed column, or separate
+   debit/credit columns). Bad rows reject the whole file with a per-row
+   report; re-uploading an already-loaded statement is rejected as a duplicate.
 4. Create a second source and upload its file.
-5. Go to **Runs** → **New run**, pick the two sources + a date window, and **Create run**.
-   You land on the run detail with matches and breaks.
+5. Go to **Runs** → **New run**, pick the two sources + a date window, and
+   **Create run**. You land on the run detail with matches and breaks.
 
-Supported formats this slice: CSV (configurable mapping) and CAMT.053 (ISO 20022 XML).
+Supported formats:
+
+| Format | Notes |
+| --- | --- |
+| CSV | Per-upload column mapping; signed or debit/credit amount encodings |
+| CAMT.053 | ISO 20022 XML; entity-expansion safe |
+| MT940 | SWIFT statement; Generic or Subfielded dialect (per-source); multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
+| BAI v2 | US-bank cash-management format; built-in type-code → debit/credit mapping; `88` continuation records merge into the preceding `16` |
+
+The sources table shows an `MT940 · <dialect>` badge for sources with a dialect set.
 
 ### Compliance audit log
 
