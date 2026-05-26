@@ -2,7 +2,7 @@ use recon_domain::UserRole;
 use crate::error::AuthError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Permission { ViewRecon, AssignBreak, ProposeResolution, ApproveResolution, ManageUsers, ManageData }
+pub enum Permission { ViewRecon, AssignBreak, ProposeResolution, ApproveResolution, ManageUsers, ManageData, ViewAudit }
 
 pub fn permitted(role: UserRole, perm: Permission) -> bool {
     use Permission::*;
@@ -10,7 +10,7 @@ pub fn permitted(role: UserRole, perm: Permission) -> bool {
     match perm {
         ViewRecon | AssignBreak | ProposeResolution | ManageData => true,
         ApproveResolution => matches!(role, Approver | Admin),
-        ManageUsers => matches!(role, Admin),
+        ManageUsers | ViewAudit => matches!(role, Admin),
     }
 }
 
@@ -52,5 +52,11 @@ mod tests {
         for r in [Operator, Approver, Admin] {
             assert!(permitted(r, Permission::ManageData));
         }
+    }
+    #[test]
+    fn view_audit_admin_only() {
+        assert!(!permitted(Operator, Permission::ViewAudit));
+        assert!(!permitted(Approver, Permission::ViewAudit));
+        assert!(permitted(Admin, Permission::ViewAudit));
     }
 }
