@@ -78,12 +78,9 @@ impl Parser for Mt940Parser {
                         Err(e) => errors.push(RowError::new(line_no, e.0, e.1)),
                     }
                 }
-                ":86:" => {
-                    if pending.is_some() {
-                        info_buf.push(content.to_string());
-                    } else {
-                        // :86: not following a :61: — treat as info on the statement, ignore.
-                    }
+                // :86: not following a :61: is statement-level info — ignored.
+                ":86:" if pending.is_some() => {
+                    info_buf.push(content.to_string());
                 }
                 _ => {
                     // Unknown tag — skip.
