@@ -59,6 +59,10 @@ pub fn canonical_bytes(
 }
 
 fn push_lp(out: &mut Vec<u8>, bytes: &[u8]) {
+    // Length-prefix is u32 BE, so each field is bounded at 4 GiB. Audit fields are
+    // all tiny in practice (IDs, RFC3339 strings, JSON payloads <2KB); the assert
+    // turns a silent truncation footgun into a panic if anyone ever tries.
+    debug_assert!(bytes.len() <= u32::MAX as usize, "length-prefix overflow");
     out.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
     out.extend_from_slice(bytes);
 }
