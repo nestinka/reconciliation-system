@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,7 +37,7 @@ import { useApi } from "@/lib/api/provider";
 import { useTenant } from "@/lib/providers/tenant-provider";
 import { useSources } from "@/lib/hooks/use-sources";
 import { UploadDialog } from "@/components/app/upload-dialog";
-import type { SourceListItem } from "@/lib/api/client";
+import type { SourceListItem, FormatDialect } from "@/lib/api/client";
 import type { SourceKind } from "@/lib/domain/types";
 
 const KIND_OPTIONS: { value: SourceKind; label: string }[] = [
@@ -46,10 +46,17 @@ const KIND_OPTIONS: { value: SourceKind; label: string }[] = [
   { value: "cross_system", label: "Cross-system" },
 ];
 
+// MT940 dialect select uses an empty-string sentinel to mean "not applicable"
+// (null on the wire). Base UI's Select can't bind a real null value.
+const DIALECT_NONE = "__none__";
+
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   kind: z.enum(["bank", "ledger", "cross_system"]),
   currency: z.string().min(3, "3-letter currency code").max(3, "3-letter currency code"),
+  // Optional MT940 dialect — null for non-MT940 sources, "generic" or
+  // "subfielded" when the source receives MT940 statements.
+  formatDialect: z.enum(["generic", "subfielded"]).nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -82,10 +89,19 @@ export default function SourcesPage() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { kind: "bank", currency: "GBP" },
+    defaultValues: { kind: "bank", currency: "GBP", formatDialect: null },
   });
 
   const kind = watch("kind");
+  const formatDialect = watch("formatDialect");
+
+  // Reset form state whenever the dialog is closed so a stale entry doesn't
+  // bleed into the next open (mirrors the UploadDialog reset-on-close pattern).
+  useEffect(() => {
+    if (!showNew) {
+      reset({ name: "", kind: "bank", currency: "GBP", formatDialect: null });
+    }
+  }, [showNew, reset]);
 
   return (
     <>
@@ -216,6 +232,39 @@ export default function SourcesPage() {
                   {errors.currency.message}
                 </p>
               )}
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="src-dialect">
+                MT940 dialect{" "}
+                <span className="text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Select
+                value={formatDialect ?? DIALECT_NONE}
+                onValueChange={(v) =>
+                  setValue(
+                    "formatDialect",
+                    v === DIALECT_NONE ? null : (v as FormatDialect)
+                  )
+                }
+              >
+                <SelectTrigger id="src-dialect" aria-label="MT940 dialect">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DIALECT_NONE}>Not applicable</SelectItem>
+                  <SelectItem value="generic">Generic</SelectItem>
+                  <SelectItem value="subfielded">
+                    Subfielded (DE/NL/BE)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Set this only if this source will receive MT940 statements. For
+                Deutsche Bank, ING, ABN AMRO, Rabobank, and most other European
+                banks, choose Subfielded.
+              </p>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={createMutation.isPending}>
