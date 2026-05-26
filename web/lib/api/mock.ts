@@ -1,8 +1,13 @@
 import type { Break, Case, CaseEvent, CanonicalTransaction, ReconciliationRun, Source, User } from "@/lib/domain/types";
 import { approve, reject, requestApproval } from "@/lib/case/approval";
 import type {
+  Anchor,
   ApiClient,
+  AuditEvent,
+  AuditPage,
+  AuditQuery,
   BreakQuery,
+  Control,
   CreateUserInput,
   CreateRunInput,
   CreateSourceInput,
@@ -16,6 +21,8 @@ import type {
   RunQuery,
   SourceListItem,
   UpdateUserPatch,
+  VerifyRequest,
+  VerifyResult,
 } from "./client";
 import { buildFixtures, type Fixtures } from "./fixtures";
 
@@ -34,10 +41,44 @@ function nextId(): string {
 export class MockApiClient implements ApiClient {
   private readonly latencyMs: number;
   private state: Fixtures;
+  private auditEvents: AuditEvent[];
 
   constructor(opts?: { latencyMs?: number }) {
     this.latencyMs = opts?.latencyMs ?? 150;
     this.state = deepClone(buildFixtures());
+    // Three deterministic sample events for tenant-acme. Hashes are stub hex.
+    this.auditEvents = [
+      {
+        tenantId: "tenant-acme",
+        seq: 1,
+        at: "2026-05-20T08:00:00Z",
+        actorId: "user-ada",
+        kind: "auth.login.success",
+        payload: { ip: "203.0.113.7" },
+        prevHash: "0".repeat(64),
+        hash: "a".repeat(64),
+      },
+      {
+        tenantId: "tenant-acme",
+        seq: 2,
+        at: "2026-05-20T09:15:00Z",
+        actorId: "user-sam",
+        kind: "data.ingest.completed",
+        payload: { sourceId: "src-acme-bank", rows: 120 },
+        prevHash: "a".repeat(64),
+        hash: "b".repeat(64),
+      },
+      {
+        tenantId: "tenant-acme",
+        seq: 3,
+        at: "2026-05-20T10:30:00Z",
+        actorId: "user-theo",
+        kind: "case.assigned",
+        payload: { caseId: "case-001", assigneeId: "user-mia" },
+        prevHash: "b".repeat(64),
+        hash: "c".repeat(64),
+      },
+    ];
   }
 
   private async delay(): Promise<void> {
@@ -547,5 +588,95 @@ export class MockApiClient implements ApiClient {
     this.state.cases[caseIdx] = updatedCase;
 
     return deepClone(this.state.cases[caseIdx]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Audit / Anchors / Controls
+  // -------------------------------------------------------------------------
+
+  async listAudit(tenantId: string, q?: AuditQuery): Promise<AuditPage> {
+    await this.delay();
+    let items = this.auditEvents.filter((e) => e.tenantId === tenantId);
+    if (q?.from) items = items.filter((e) => e.at >= q.from!);
+    if (q?.to) items = items.filter((e) => e.at <= q.to!);
+    if (q?.kind && q.kind.length > 0) {
+      const set = new Set(q.kind);
+      items = items.filter((e) => set.has(e.kind));
+    }
+    if (q?.actorId) items = items.filter((e) => e.actorId === q.actorId);
+    items = items.slice().sort((a, b) => b.seq - a.seq);
+    if (typeof q?.before === "number") items = items.filter((e) => e.seq < q.before!);
+    const limit = q?.limit ?? items.length;
+    const page = items.slice(0, limit);
+    const nextCursor = page.length === limit && items.length > limit ? page[page.length - 1].seq : null;
+    return deepClone({ items: page, nextCursor });
+  }
+
+  async verifyAudit(
+    tenantId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    body: VerifyRequest // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<VerifyResult> {
+    await this.delay();
+    const checked = this.auditEvents.filter((e) => e.tenantId === tenantId).length;
+    return { status: "valid", checked };
+  }
+
+  async anchorAudit(
+    tenantId: string // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<{ anchorSeq: number; hash: string }> {
+    await this.delay();
+    return { anchorSeq: 1, hash: "0".repeat(64) };
+  }
+
+  async listAnchors(
+    tenantId: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    limit?: number
+  ): Promise<Anchor[]> {
+    await this.delay();
+    const anchors: Anchor[] = [
+      {
+        anchorSeq: 1,
+        at: "2026-05-25T00:00:00Z",
+        tenantHeads: {
+          "tenant-acme": { seq: 3, hash: "c".repeat(64) },
+        },
+        prevHash: "0".repeat(64),
+        hash: "d".repeat(64),
+      },
+      {
+        anchorSeq: 2,
+        at: "2026-05-26T00:00:00Z",
+        tenantHeads: {
+          "tenant-acme": { seq: 3, hash: "c".repeat(64) },
+        },
+        prevHash: "d".repeat(64),
+        hash: "e".repeat(64),
+      },
+    ];
+    return deepClone(typeof limit === "number" ? anchors.slice(0, limit) : anchors);
+  }
+
+  async listControls(): Promise<Control[]> {
+    await this.delay();
+    return deepClone([
+      {
+        id: "ISO27001:A.9.4.2",
+        framework: "ISO 27001",
+        description: "Secure log-on procedures",
+        eventKinds: ["auth.login.success", "auth.login.failure", "auth.lockout"],
+      },
+      {
+        id: "SOC2:CC6.1",
+        framework: "SOC 2",
+        description: "Logical access security",
+        eventKinds: ["auth.login.success", "auth.login.failure", "auth.lockout"],
+      },
+      {
+        id: "FCA:SYSC9.1",
+        framework: "FCA",
+        description: "Record keeping",
+        eventKinds: ["data.ingest.completed", "data.run.created"],
+      },
+    ]);
   }
 }

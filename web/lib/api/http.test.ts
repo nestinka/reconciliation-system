@@ -96,6 +96,15 @@ describe("HttpApiClient", () => {
     await expect(c.getDashboard("tenant-acme")).rejects.toThrow(/401/);
   });
 
+  it("listAudit sends kind + limit query params", async () => {
+    tokenStore.setAccessToken("t");
+    const fetchMock = vi.fn<typeof fetch>(() => okJson({ items: [], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    const c = new HttpApiClient("http://api.test");
+    await c.listAudit("tenant-acme", { kind: ["auth.login.success", "auth.logout"], limit: 50 });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/api/audit?kind=auth.login.success&kind=auth.logout&limit=50");
+  });
+
   it("ingestFile throws IngestError on 409 duplicate", async () => {
     const c = new HttpApiClient("http://api.test");
     const fetchMock = vi.fn().mockResolvedValue(

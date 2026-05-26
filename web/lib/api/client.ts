@@ -94,6 +94,58 @@ export interface CsvMapping {
   counterparty?: ColRef;
 }
 
+// Audit chain types — wire shape matches backend recon-audit::AuditKind::as_str
+export type AuditKind =
+  | "auth.login.success" | "auth.login.failure" | "auth.lockout" | "auth.logout"
+  | "auth.password.changed" | "auth.password.reset_requested" | "auth.password.reset_completed"
+  | "auth.refresh.reused" | "auth.tenant.switched"
+  | "admin.user.created" | "admin.user.role_changed" | "admin.user.disabled" | "admin.user.enabled" | "admin.user.removed"
+  | "data.source.created" | "data.ingest.completed" | "data.run.created"
+  | "case.assigned" | "case.event_appended"
+  | "system.anchor.created";
+
+export interface AuditEvent {
+  tenantId: string;
+  seq: number;
+  at: string;
+  actorId: string;
+  kind: AuditKind;
+  payload: Record<string, unknown>;
+  prevHash: string;  // hex
+  hash: string;      // hex
+}
+
+export interface AuditPage { items: AuditEvent[]; nextCursor: number | null; }
+
+export interface AuditQuery {
+  from?: string; to?: string;
+  kind?: AuditKind[]; actorId?: string;
+  limit?: number; before?: number;
+}
+
+export interface VerifyRequest { from?: number; to?: number; expectedPrevHash?: string; }
+export interface VerifyResult {
+  status: "valid" | "invalid";
+  checked: number;
+  firstBrokenSeq?: number;
+  reason?: "tampered" | "wrong_prev" | "missing" | "reordered" | "wrong_genesis";
+}
+
+export interface Anchor {
+  anchorSeq: number;
+  at: string;
+  tenantHeads: Record<string, { seq: number; hash: string }>;
+  prevHash: string;
+  hash: string;
+}
+
+export interface Control {
+  id: string;
+  framework: string;
+  description: string;
+  eventKinds: AuditKind[];
+}
+
 export class IngestError extends Error {
   constructor(
     public code: "parse" | "duplicate",
@@ -140,4 +192,9 @@ export interface ApiClient {
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source>;
   ingestFile(tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult>;
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun>;
+  listAudit(tenantId: string, q?: AuditQuery): Promise<AuditPage>;
+  verifyAudit(tenantId: string, body: VerifyRequest): Promise<VerifyResult>;
+  anchorAudit(tenantId: string): Promise<{ anchorSeq: number; hash: string }>;
+  listAnchors(tenantId: string, limit?: number): Promise<Anchor[]>;
+  listControls(): Promise<Control[]>;
 }

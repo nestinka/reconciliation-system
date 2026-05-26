@@ -1,5 +1,6 @@
 import type {
   ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch, SourceListItem, CreateSourceInput, IngestFormat, IngestResult, CreateRunInput, CsvMapping,
+  Anchor, AuditPage, AuditQuery, Control, VerifyRequest, VerifyResult,
 } from "./client";
 import { IngestError } from "./client";
 import type {
@@ -91,6 +92,28 @@ export class HttpApiClient implements ApiClient {
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun> {
     return this.req("/api/runs", tenantId, { method: "POST", body: JSON.stringify(input) });
   }
+
+  listAudit(tenantId: string, q?: AuditQuery): Promise<AuditPage> {
+    const params = new URLSearchParams();
+    if (q?.from) params.append("from", q.from);
+    if (q?.to) params.append("to", q.to);
+    for (const k of q?.kind ?? []) params.append("kind", k);
+    if (q?.actorId) params.append("actorId", q.actorId);
+    if (q?.limit) params.append("limit", String(q.limit));
+    if (q?.before) params.append("before", String(q.before));
+    const qs = params.toString();
+    return this.req(`/api/audit${qs ? `?${qs}` : ""}`, tenantId);
+  }
+  verifyAudit(tenantId: string, body: VerifyRequest): Promise<VerifyResult> {
+    return this.req("/api/audit/verify", tenantId, { method: "POST", body: JSON.stringify(body) });
+  }
+  anchorAudit(tenantId: string): Promise<{ anchorSeq: number; hash: string }> {
+    return this.req("/api/audit/anchor", tenantId, { method: "POST" });
+  }
+  listAnchors(tenantId: string, limit?: number): Promise<Anchor[]> {
+    return this.req(`/api/audit/anchors${limit ? `?limit=${limit}` : ""}`, tenantId);
+  }
+  listControls(): Promise<Control[]> { return this.req("/api/audit/controls", null); }
 
   async ingestFile(_tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult> {
     const send = async (token: string | null): Promise<Response> => {
