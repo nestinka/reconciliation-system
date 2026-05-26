@@ -28,7 +28,7 @@ async fn create_and_list_sources(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
         .execute(&store.pool).await.unwrap();
-    let s = store.create_source("t", SourceKind::Bank, "Acme Bank", "GBP", "actor").await.unwrap();
+    let s = store.create_source("t", SourceKind::Bank, "Acme Bank", "GBP", "actor", None).await.unwrap();
     assert!(s.id.starts_with("src-"));
     let got = store.get_source("t", &s.id).await.unwrap();
     assert_eq!(got.name, "Acme Bank");
@@ -106,8 +106,8 @@ async fn ingest_into_foreign_source_is_not_found(pool: sqlx::PgPool) {
 async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')").execute(&store.pool).await.unwrap();
-    let bank = store.create_source("t", SourceKind::Bank, "Bank", "GBP", "actor").await.unwrap();
-    let ledger = store.create_source("t", SourceKind::Ledger, "Ledger", "GBP", "actor").await.unwrap();
+    let bank = store.create_source("t", SourceKind::Bank, "Bank", "GBP", "actor", None).await.unwrap();
+    let ledger = store.create_source("t", SourceKind::Ledger, "Ledger", "GBP", "actor", None).await.unwrap();
 
     // One matching pair (same amount/date) and one bank-only break.
     let mk = |id: &str, src: &str, eref: &str, amt: i64| CanonicalTransaction {
