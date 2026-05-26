@@ -100,3 +100,40 @@ async fn verify_detects_payload_tamper(pool: sqlx::PgPool) {
     assert_eq!(outcome.first_broken_seq, Some(2));
     assert_eq!(outcome.reason, Some(recon_audit::chain::VerifyReason::Tampered));
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn anchor_now_writes_anchor_and_per_tenant_event(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t'),('u','U','u')")
+        .execute(&store.pool).await.unwrap();
+    // Seed an event per tenant so each has a head.
+    let mut tx = store.pool.begin().await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u1".into(), ip: None }).await.unwrap();
+    store.append_audit(&mut tx, "u", "system",
+        AuditPayload::AuthLogout { user_id: "u2".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let anchor = store.anchor_now().await.unwrap();
+    assert_eq!(anchor.anchor_seq, 1);
+    assert_eq!(anchor.tenant_heads.len(), 2);
+    assert!(anchor.tenant_heads.contains_key("t"));
+    assert!(anchor.tenant_heads.contains_key("u"));
+
+    // Each tenant gained a `system.anchor.created` row.
+    let n_t: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='system.anchor.created'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n_t, 1);
+    let n_u: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='u' AND kind='system.anchor.created'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n_u, 1);
+
+    // List anchors returns the row.
+    let anchors = store.list_anchors(10).await.unwrap();
+    assert_eq!(anchors.len(), 1);
+    assert_eq!(anchors[0].anchor_seq, 1);
+}
