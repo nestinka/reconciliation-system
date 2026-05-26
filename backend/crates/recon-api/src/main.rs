@@ -72,6 +72,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Arc::new(IpLimiter::new(10.0, 10.0 / 60.0))
     };
 
+    // Spawn the audit-anchor scheduler before the router consumes `store`.
+    recon_api::scheduler::spawn_anchor_loop(store.clone());
+
     let app = router(AppState {
         store,
         cfg: Arc::new(AuthConfig::from_env()),

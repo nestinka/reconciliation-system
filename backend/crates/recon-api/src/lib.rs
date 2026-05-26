@@ -6,6 +6,7 @@ pub mod routes;
 pub mod routes_audit;
 pub mod routes_auth;
 pub mod routes_users;
+pub mod scheduler;
 pub mod state;
 
 /// Build a test app with a custom mailer + return the AuthConfig so tests can mint matching tokens.
