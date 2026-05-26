@@ -144,7 +144,7 @@ pub fn verify(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AuditEntry, AuditPayload};
+    use crate::{AuditEntry, AuditKind, AuditPayload};
 
     fn mk(seq: i64, prev: [u8; 32], payload: AuditPayload) -> AuditEntry {
         let kind = payload.kind();
@@ -241,5 +241,24 @@ mod tests {
         // Wrong expected_prev fails.
         let err = verify(&[e2], Some([7u8; 32])).unwrap_err();
         assert_eq!(err.reason, VerifyReason::WrongGenesis);
+    }
+
+    #[test]
+    fn golden_vector_for_logout_genesis_entry() {
+        // A specific entry whose hash is locked in. If this test ever flips, the
+        // canonical encoding has changed and existing chains become unverifiable —
+        // require a deliberate migration.
+        let p = AuditPayload::AuthLogout { user_id: "user-mia".into(), ip: None };
+        let h = compute_hash(&[0u8; 32], 1, "tenant-acme", "2026-05-26T10:00:00Z", "user-mia", AuditKind::AuthLogout, &p);
+        let actual = hex::encode(h);
+        // The expected value is computed once during initial implementation; replace
+        // with the value printed by this test on first run.
+        let expected = "4a87d4d47141fa543819b566627d327eb62ae91439c74224c3275bb9660866c7";
+        if expected == "REPLACE_WITH_INITIAL_HASH" {
+            // First-run helper: print the hash so the developer can paste it in.
+            // After replacing, this branch is never taken again.
+            panic!("first run: replace expected with {actual}");
+        }
+        assert_eq!(actual, expected, "canonical encoding changed");
     }
 }
