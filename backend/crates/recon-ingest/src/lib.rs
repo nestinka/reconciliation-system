@@ -1,3 +1,4 @@
+pub mod bai2;
 pub mod camt053;
 pub mod csv;
 pub mod money;
