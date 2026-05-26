@@ -1,6 +1,7 @@
 pub mod camt053;
 pub mod csv;
 pub mod money;
+pub mod mt940;
 
 use recon_domain::Direction;
 
