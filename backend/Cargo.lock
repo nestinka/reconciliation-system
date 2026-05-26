@@ -1551,6 +1551,7 @@ dependencies = [
 name = "recon-store"
 version = "0.1.0"
 dependencies = [
+ "recon-audit",
  "recon-auth",
  "recon-domain",
  "recon-matching",

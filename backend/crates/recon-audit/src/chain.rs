@@ -141,6 +141,31 @@ pub fn verify(
     Ok(())
 }
 
+/// API-shape outcome of running `verify` on a stored range.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifyOutcome {
+    pub status: VerifyStatus,
+    pub checked: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_broken_seq: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<VerifyReason>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifyStatus { Valid, Invalid }
+
+impl VerifyOutcome {
+    pub fn valid(checked: i64) -> Self {
+        Self { status: VerifyStatus::Valid, checked, first_broken_seq: None, reason: None }
+    }
+    pub fn invalid(checked: i64, e: VerifyError) -> Self {
+        Self { status: VerifyStatus::Invalid, checked, first_broken_seq: Some(e.seq), reason: Some(e.reason) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
