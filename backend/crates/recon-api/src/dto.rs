@@ -77,6 +77,8 @@ pub struct CreateSourceReq {
     pub kind: recon_domain::SourceKind,
     pub name: String,
     pub currency: String,
+    #[serde(default)]
+    pub format_dialect: Option<String>,
 }
 
 #[derive(serde::Deserialize)]

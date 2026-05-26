@@ -321,6 +321,51 @@ async fn anchor_endpoint_writes_row(pool: sqlx::PgPool) {
 }
 
 #[sqlx::test]
+async fn create_source_with_invalid_dialect_400(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+
+    let body = serde_json::json!({
+        "kind": "bank", "name": "S", "currency": "GBP", "formatDialect": "wat"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/sources")
+        .header(axum::http::header::AUTHORIZATION, &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test]
+async fn create_source_with_subfielded_dialect_200_round_trips(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+
+    let body = serde_json::json!({
+        "kind": "bank", "name": "Acme Bank MT940", "currency": "GBP", "formatDialect": "subfielded"
+    });
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/sources")
+        .header(axum::http::header::AUTHORIZATION, &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["formatDialect"], "subfielded");
+}
+
+#[sqlx::test]
 async fn assign_break_sets_assignee(pool: sqlx::PgPool) {
     let (app, cfg) = seeded_app(pool).await;
     let auth = bearer(&cfg, "user-ada", "tenant-acme", UserRole::Operator);
