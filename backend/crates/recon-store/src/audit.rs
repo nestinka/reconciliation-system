@@ -29,7 +29,15 @@ impl Store {
         let seq = prev_seq + 1;
 
         // 2. Timestamp + hash.
+        // Truncate to microsecond precision so the in-memory timestamp matches what
+        // Postgres TIMESTAMPTZ round-trips (microseconds, not nanoseconds). Without
+        // this, list_audit reformats the DB-loaded value to a different RFC3339 string
+        // than the one that fed compute_hash → verify reports Tampered on roundtrip.
         let now = OffsetDateTime::now_utc();
+        let micros = now.microsecond();
+        let now = now
+            .replace_nanosecond(micros * 1_000)
+            .expect("microsecond * 1000 fits in nanosecond range");
         let at = now
             .format(&Rfc3339)
             .map_err(|_| StoreError::Db(sqlx::Error::Decode("rfc3339".into())))?;
