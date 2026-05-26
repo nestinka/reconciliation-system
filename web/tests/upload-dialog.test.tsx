@@ -175,4 +175,57 @@ describe("UploadDialog", () => {
       expect(onOpenChange).toHaveBeenCalledWith(false);
     });
   });
+
+  it("shows MT940 and BAI2 in the format dropdown", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderDialog(client);
+
+    // Open the Shadcn Select to surface the SelectItem options.
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+
+    expect(
+      await screen.findByRole("option", { name: /CSV \(with column mapping\)/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /CAMT\.053/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /MT940/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /BAI v2/i })
+    ).toBeInTheDocument();
+  });
+
+  it("hides the CSV mapping form when MT940 is selected", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderDialog(client);
+
+    // CSV mapping form is initially visible.
+    expect(screen.getByLabelText(/reference col/i)).toBeInTheDocument();
+
+    // Switch format to MT940.
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+    await user.click(await screen.findByRole("option", { name: /MT940/i }));
+
+    // CSV mapping fields should no longer be in the DOM.
+    expect(screen.queryByLabelText(/reference col/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/amount col/i)).not.toBeInTheDocument();
+  });
+
+  it("shows notice when source has no dialect and format is MT940", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    // MOCK_SOURCE.formatDialect is null — the notice should appear.
+    renderDialog(client);
+
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+    await user.click(await screen.findByRole("option", { name: /MT940/i }));
+
+    expect(
+      screen.getByText(/no MT940 dialect set/i)
+    ).toBeInTheDocument();
+  });
 });
