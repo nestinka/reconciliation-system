@@ -1,14 +1,20 @@
-import type { Break, Case, CaseEvent, CanonicalTransaction, User } from "@/lib/domain/types";
+import type { Break, Case, CaseEvent, CanonicalTransaction, ReconciliationRun, Source, User } from "@/lib/domain/types";
 import { approve, reject, requestApproval } from "@/lib/case/approval";
 import type {
   ApiClient,
   BreakQuery,
   CreateUserInput,
+  CreateRunInput,
+  CreateSourceInput,
+  CsvMapping,
   DashboardSummary,
+  IngestFormat,
+  IngestResult,
   MatchSuggestion,
   NewCaseEvent,
   RunDetail,
   RunQuery,
+  SourceListItem,
   UpdateUserPatch,
 } from "./client";
 import { buildFixtures, type Fixtures } from "./fixtures";
@@ -373,6 +379,60 @@ export class MockApiClient implements ApiClient {
     }
 
     return deepClone(this.state.breaks[brkIdx]);
+  }
+
+  // -------------------------------------------------------------------------
+  // Sources
+  // -------------------------------------------------------------------------
+
+  async listSources(tenantId: string): Promise<SourceListItem[]> {
+    await this.delay();
+    return this.state.sources
+      .filter((s) => s.tenantId === tenantId)
+      .map((s) =>
+        deepClone({
+          ...s,
+          txnCount: this.state.transactions.filter((t) => t.sourceId === s.id).length,
+        })
+      );
+  }
+
+  async createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
+    await this.delay();
+    const src: Source = { id: `src-${nextId()}`, tenantId, kind: input.kind, name: input.name, currency: input.currency };
+    this.state.sources.push(deepClone(src));
+    return src;
+  }
+
+  async ingestFile(
+    tenantId: string,
+    sourceId: string,
+    format: IngestFormat, // eslint-disable-line @typescript-eslint/no-unused-vars
+    file: File, // eslint-disable-line @typescript-eslint/no-unused-vars
+    mapping?: CsvMapping // eslint-disable-line @typescript-eslint/no-unused-vars
+  ): Promise<IngestResult> {
+    await this.delay();
+    // The mock does not parse real bytes; it records a deterministic ingest so
+    // UI flows (success summary) can be tested. One synthetic txn per call.
+    const ref = `MOCK-${nextId()}`;
+    this.state.transactions.push(deepClone({
+      id: `txn-${nextId()}`, tenantId, sourceId,
+      externalRef: ref, valueDate: "2026-05-10", postedAt: "2026-05-10T00:00:00Z",
+      amountMinor: 1000, currency: "GBP", direction: "debit", description: "Mock ingest",
+    }) as CanonicalTransaction);
+    return { ingested: 1, sourceId };
+  }
+
+  async createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun> {
+    await this.delay();
+    const run: ReconciliationRun = {
+      id: `run-${nextId()}`, tenantId, name: input.name,
+      sourceAId: input.sourceAId, sourceBId: input.sourceBId, status: "completed",
+      startedAt: "2026-05-25T00:00:00Z", completedAt: "2026-05-25T00:00:00Z", configVersion: "v1.0",
+      stats: { matched: 0, unmatched: 0, partial: 0, duplicate: 0, breakCount: 0, matchRatePct: 0, valueAtRiskMinor: 0 },
+    };
+    this.state.runs.push(deepClone(run));
+    return run;
   }
 
   // -------------------------------------------------------------------------

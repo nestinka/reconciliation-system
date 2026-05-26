@@ -69,6 +69,26 @@ pub struct PatchUserReq {
     pub disabled: Option<bool>,
 }
 
+// --- Ingestion DTOs ---
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSourceReq {
+    pub kind: recon_domain::SourceKind,
+    pub name: String,
+    pub currency: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateRunReq {
+    pub name: String,
+    pub source_a_id: String,
+    pub source_b_id: String,
+    pub from: String,
+    pub to: String,
+}
+
 // --- Auth DTOs ---
 
 #[derive(serde::Deserialize)]

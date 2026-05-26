@@ -12,4 +12,6 @@ pub enum StoreError {
     Db(#[from] sqlx::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error("duplicate refs")]
+    DuplicateRefs(Vec<String>),
 }

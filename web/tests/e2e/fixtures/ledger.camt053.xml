@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.02">
+  <BkToCstmrStmt><Stmt>
+    <Ntry>
+      <Amt Ccy="GBP">100.00</Amt><CdtDbtInd>DBIT</CdtDbtInd>
+      <ValDt><Dt>2026-05-10</Dt></ValDt>
+      <NtryDtls><TxDtls><Refs><AcctSvcrRef>LEDG-1</AcctSvcrRef></Refs>
+      <RmtInf><Ustrd>Payment to supplier</Ustrd></RmtInf></TxDtls></NtryDtls>
+    </Ntry>
+  </Stmt></BkToCstmrStmt>
+</Document>

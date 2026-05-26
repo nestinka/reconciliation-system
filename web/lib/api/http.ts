@@ -1,8 +1,9 @@
 import type {
-  ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch,
+  ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch, SourceListItem, CreateSourceInput, IngestFormat, IngestResult, CreateRunInput, CsvMapping,
 } from "./client";
+import { IngestError } from "./client";
 import type {
-  Break, Case, CanonicalTransaction, ReconciliationRun, Tenant, User,
+  Break, Case, CanonicalTransaction, ReconciliationRun, Source, Tenant, User,
 } from "@/lib/domain/types";
 import { getAccessToken, runRefresh } from "@/lib/auth/token-store";
 
@@ -81,5 +82,42 @@ export class HttpApiClient implements ApiClient {
   }
   appendCaseEvent(tenantId: string, caseId: string, event: NewCaseEvent): Promise<Case> {
     return this.req(`/api/cases/${caseId}/events`, tenantId, { method: "POST", body: JSON.stringify(event) });
+  }
+
+  listSources(tenantId: string): Promise<SourceListItem[]> { return this.req("/api/sources", tenantId); }
+  createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
+    return this.req("/api/sources", tenantId, { method: "POST", body: JSON.stringify(input) });
+  }
+  createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun> {
+    return this.req("/api/runs", tenantId, { method: "POST", body: JSON.stringify(input) });
+  }
+
+  async ingestFile(_tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult> {
+    const send = async (token: string | null): Promise<Response> => {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("format", format);
+      if (mapping) fd.append("mapping", JSON.stringify(mapping));
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      // NOTE: do not set Content-Type — the browser sets the multipart boundary.
+      return fetch(`${this.baseUrl}/api/sources/${sourceId}/ingest`, { method: "POST", headers, body: fd });
+    };
+
+    let res = await send(getAccessToken());
+    if (res.status === 401) {
+      const newToken = await runRefresh();
+      if (!newToken) throw new Error("API 401: unauthorized");
+      res = await send(newToken);
+    }
+    if (res.ok) return res.json() as Promise<IngestResult>;
+
+    // Structured ingest errors (422 parse / 409 duplicate).
+    let body: { error?: { code?: string; message?: string; rows?: { row: number; field: string; message: string }[]; refs?: string[] } } = {};
+    try { body = await res.json(); } catch { /* ignore */ }
+    const err = body.error;
+    if (err?.code === "parse") throw new IngestError("parse", err.message ?? "parse error", err.rows);
+    if (err?.code === "duplicate") throw new IngestError("duplicate", err.message ?? "duplicate", undefined, err.refs);
+    throw new Error(`API ${res.status}: ${err?.code ?? err?.message ?? res.status}`);
   }
 }

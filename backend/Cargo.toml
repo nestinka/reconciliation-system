@@ -7,6 +7,7 @@ members = [
   "crates/recon-api",
   "crates/recon-auth",
   "crates/recon-mail",
+  "crates/recon-ingest",
 ]
 
 [workspace.package]
@@ -27,6 +28,9 @@ tower-http = { version = "0.6", features = ["trace", "cors"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 proptest = "1"
+csv = "1"
+quick-xml = "0.36"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 argon2 = "0.5"
 jsonwebtoken = "9"
 sha2 = "0.10"

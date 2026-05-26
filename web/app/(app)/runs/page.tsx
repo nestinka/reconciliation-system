@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryState } from "nuqs";
 import { Search } from "lucide-react";
@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useRuns } from "@/lib/hooks/use-runs";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
+import { NewRunDialog } from "@/components/app/new-run-dialog";
 import type { RunStatus } from "@/lib/domain/types";
 
 // Status options for the filter Select
@@ -37,6 +38,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
 // ---------------------------------------------------------------------------
 function RunsPageInner() {
   const router = useRouter();
+  const [showNewRun, setShowNewRun] = useState(false);
 
   // URL-persisted filters via nuqs
   const [status, setStatus] = useQueryState("status", {
@@ -69,10 +71,14 @@ function RunsPageInner() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        title="Reconciliation runs"
-        description="Browse and inspect reconciliation run history."
-      />
+      <div className="flex items-center justify-between">
+        <PageHeader
+          title="Reconciliation runs"
+          description="Browse and inspect reconciliation run history."
+        />
+        <Button onClick={() => setShowNewRun(true)}>New run</Button>
+      </div>
+      <NewRunDialog open={showNewRun} onOpenChange={setShowNewRun} />
 
       {/* Filter bar */}
       <div className="flex items-center gap-3 flex-wrap">

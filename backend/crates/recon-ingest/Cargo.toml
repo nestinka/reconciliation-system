@@ -1,0 +1,15 @@
+[package]
+name = "recon-ingest"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+recon-domain = { path = "../recon-domain" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+csv = { workspace = true }
+quick-xml = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

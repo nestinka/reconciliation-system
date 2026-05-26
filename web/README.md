@@ -67,6 +67,21 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
 
 > **Production note:** set a strong `JWT_SECRET` (the dev fallback is insecure and logs a warning) and `SECURE_COOKIE=1` so the refresh cookie is sent only over HTTPS.
 
+### Ingesting bank/ledger files
+
+1. Sign in (any role can ingest).
+2. Go to **Sources** → **New source** (give it a name, kind, and currency).
+3. Click **Upload** on the source row, choose **CSV** or **CAMT.053**, pick a file, and
+   (for CSV) map the columns by 0-based index + choose how amounts are encoded
+   (single signed column, or separate debit/credit columns). Bad rows reject the whole
+   file with a per-row report; re-uploading an already-loaded statement is rejected as a
+   duplicate.
+4. Create a second source and upload its file.
+5. Go to **Runs** → **New run**, pick the two sources + a date window, and **Create run**.
+   You land on the run detail with matches and breaks.
+
+Supported formats this slice: CSV (configurable mapping) and CAMT.053 (ISO 20022 XML).
+
 ### Running the E2E against the live stack
 With Postgres up and `RECON_DEV=1 ... cargo run -p recon-api` serving on :8080:
 ```bash

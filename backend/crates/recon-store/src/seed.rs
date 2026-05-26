@@ -209,7 +209,7 @@ impl Store {
             (
                 "txn-c004",
                 "src-acme-ledger",
-                "DUP-9",
+                "DUP-9-a",
                 "2026-05-10",
                 95_000,
                 "debit",
@@ -219,7 +219,7 @@ impl Store {
             (
                 "txn-c005",
                 "src-acme-ledger",
-                "DUP-9",
+                "DUP-9-b",
                 "2026-05-10",
                 95_000,
                 "debit",
@@ -430,7 +430,7 @@ impl Store {
         Ok(())
     }
 
-    async fn load_window(
+    pub(crate) async fn load_window(
         &self,
         tx: &mut sqlx::PgConnection,
         tenant_id: &str,

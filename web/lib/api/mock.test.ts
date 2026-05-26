@@ -72,4 +72,27 @@ describe("MockApiClient", () => {
     expect(updated.assigneeId).toBe("user-sam");
     expect(updated.status).toBe("pending_approval"); // not regressed to investigating
   });
+
+  it("createSource then listSources includes it with a txn count", async () => {
+    const c = new MockApiClient({ latencyMs: 0 });
+    const before = (await c.listSources("tenant-acme")).length;
+    const src = await c.createSource("tenant-acme", { kind: "bank", name: "New Bank", currency: "GBP" });
+    const after = await c.listSources("tenant-acme");
+    expect(after.length).toBe(before + 1);
+    expect(after.find((s) => s.id === src.id)?.txnCount).toBe(0);
+  });
+
+  it("ingestFile records a transaction and returns a count", async () => {
+    const c = new MockApiClient({ latencyMs: 0 });
+    const src = await c.createSource("tenant-acme", { kind: "bank", name: "B", currency: "GBP" });
+    const res = await c.ingestFile("tenant-acme", src.id, "csv", new File(["x"], "f.csv"), undefined);
+    expect(res.ingested).toBe(1);
+    expect((await c.listSources("tenant-acme")).find((s) => s.id === src.id)?.txnCount).toBe(1);
+  });
+
+  it("createRun appends a run", async () => {
+    const c = new MockApiClient({ latencyMs: 0 });
+    const run = await c.createRun("tenant-acme", { name: "R", sourceAId: "a", sourceBId: "b", from: "2026-05-01", to: "2026-05-31" });
+    expect(run.id).toMatch(/^run-/);
+  });
 });
