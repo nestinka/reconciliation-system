@@ -16,6 +16,7 @@ recon-domain = { path = "../recon-domain" }
 recon-store = { path = "../recon-store" }
 recon-matching = { path = "../recon-matching" }
 recon-auth = { path = "../recon-auth" }
+recon-audit = { path = "../recon-audit" }
 recon-mail = { path = "../recon-mail" }
 axum = { workspace = true, features = ["multipart"] }
 recon-ingest = { path = "../recon-ingest" }

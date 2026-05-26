@@ -1462,6 +1462,7 @@ dependencies = [
  "axum-extra",
  "hex",
  "http-body-util",
+ "recon-audit",
  "recon-auth",
  "recon-domain",
  "recon-ingest",
