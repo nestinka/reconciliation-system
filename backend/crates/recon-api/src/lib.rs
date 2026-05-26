@@ -3,6 +3,7 @@ pub mod dto;
 pub mod error;
 pub mod ratelimit;
 pub mod routes;
+pub mod routes_audit;
 pub mod routes_auth;
 pub mod routes_users;
 pub mod state;

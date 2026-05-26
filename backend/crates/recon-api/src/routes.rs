@@ -47,7 +47,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/breaks", get(list_breaks))
         .route("/api/breaks/:break_id/assign", post(assign_break))
         .route("/api/cases/:case_id", get(get_case))
-        .route("/api/cases/:case_id/events", post(append_event));
+        .route("/api/cases/:case_id/events", post(append_event))
+        // Audit/compliance read-side.
+        .route("/api/audit", get(crate::routes_audit::list_audit))
+        .route("/api/audit/verify", post(crate::routes_audit::verify_audit))
+        .route("/api/audit/anchor", post(crate::routes_audit::anchor_audit))
+        .route("/api/audit/anchors", get(crate::routes_audit::list_anchors))
+        .route("/api/audit/controls", get(crate::routes_audit::list_controls));
     // Dev-only: reset the DB to seeded state (used by E2E). Gated by RECON_DEV.
     if std::env::var("RECON_DEV").is_ok() {
         r = r.route("/api/dev/reseed", post(dev_reseed));
