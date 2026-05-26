@@ -135,3 +135,51 @@ describe("New source dialog — MT940 dialect", () => {
     );
   });
 });
+
+describe("Sources table — dialect badge", () => {
+  it("renders the MT940 dialect badge for sources with formatDialect set", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderSourcesPage(client);
+
+    // Create a new MT940 / Subfielded source via the dialog.
+    await user.click(
+      await screen.findByRole("button", { name: /new source/i })
+    );
+
+    await user.type(screen.getByLabelText(/^name/i), "MT940 Acme");
+
+    const ccy = screen.getByLabelText(/^currency/i) as HTMLInputElement;
+    await user.clear(ccy);
+    await user.type(ccy, "GBP");
+
+    await user.click(
+      screen.getByRole("combobox", { name: /mt940 dialect/i })
+    );
+    await user.click(
+      await screen.findByRole("option", { name: /subfielded/i })
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: /create source/i })
+    );
+
+    // The new row appears in the table with the dialect badge.
+    await waitFor(() => {
+      expect(screen.getByText("MT940 Acme")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/MT940 · Subfielded/i)).toBeInTheDocument();
+  });
+
+  it("does NOT render the badge for sources without formatDialect", async () => {
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderSourcesPage(client);
+
+    // The mock's seed sources all have formatDialect: null. Wait for the
+    // table to populate, then assert no MT940 badge is present.
+    await waitFor(() => {
+      expect(screen.getByText("Acme Bank Statement")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/MT940 ·/i)).not.toBeInTheDocument();
+  });
+});

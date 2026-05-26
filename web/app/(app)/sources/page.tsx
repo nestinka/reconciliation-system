@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusCircle, Upload as UploadIcon, Database } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -138,7 +139,19 @@ export default function SourcesPage() {
               <TableBody>
                 {sources?.map((s) => (
                   <TableRow key={s.id}>
-                    <TableCell className="font-medium">{s.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{s.name}</span>
+                        {s.formatDialect && (
+                          <Badge variant="secondary" className="text-xs">
+                            MT940 ·{" "}
+                            {s.formatDialect === "subfielded"
+                              ? "Subfielded"
+                              : "Generic"}
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="capitalize text-muted-foreground">
                       {s.kind.replace("_", " ")}
                     </TableCell>
