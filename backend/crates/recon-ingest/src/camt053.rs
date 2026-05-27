@@ -23,6 +23,10 @@ struct EntryAccum {
     ntry_ref: Option<String>,
     ustrd: Option<String>,
     addtl: Option<String>,
+    cdtr_bic: Option<String>,
+    cdtr_account: Option<String>,
+    dbtr_bic: Option<String>,
+    dbtr_account: Option<String>,
 }
 
 impl Parser for Camt053Parser {
@@ -125,6 +129,10 @@ fn parent(path: &[String]) -> &str {
     if path.len() >= 2 { path[path.len() - 2].as_str() } else { "" }
 }
 
+fn path_contains(path: &[String], target: &str) -> bool {
+    path.iter().any(|s| s == target)
+}
+
 fn apply_text(
     acc: &mut EntryAccum,
     path: &[String],
@@ -147,6 +155,40 @@ fn apply_text(
         "NtryRef" => acc.ntry_ref = Some(text.to_string()),
         "Ustrd" => acc.ustrd = Some(text.to_string()),
         "AddtlNtryInf" => acc.addtl = Some(text.to_string()),
+        "BIC" | "BICFI" => {
+            // Counterparty BIC lives under <CdtrAgt>/<FinInstnId>/<BIC|BICFI>
+            // or <DbtrAgt>/.../<BIC|BICFI>. Skip the bank's own account agent.
+            let raw = text.trim().to_uppercase();
+            if !raw.is_empty() {
+                if path_contains(path, "CdtrAgt") && acc.cdtr_bic.is_none() {
+                    acc.cdtr_bic = Some(raw);
+                } else if path_contains(path, "DbtrAgt") && acc.dbtr_bic.is_none() {
+                    acc.dbtr_bic = Some(raw);
+                }
+            }
+        }
+        "IBAN" => {
+            let raw = text.trim().to_string();
+            if !raw.is_empty() {
+                if path_contains(path, "CdtrAcct") && acc.cdtr_account.is_none() {
+                    acc.cdtr_account = Some(raw);
+                } else if path_contains(path, "DbtrAcct") && acc.dbtr_account.is_none() {
+                    acc.dbtr_account = Some(raw);
+                }
+            }
+        }
+        "Id" => {
+            // Non-IBAN account is <CdtrAcct>/<Id>/<Othr>/<Id> — capture only when
+            // we're inside an <Othr> and the enclosing *Acct is CdtrAcct or DbtrAcct.
+            let raw = text.trim().to_string();
+            if path_contains(path, "Othr") && !raw.is_empty() {
+                if path_contains(path, "CdtrAcct") && acc.cdtr_account.is_none() {
+                    acc.cdtr_account = Some(raw);
+                } else if path_contains(path, "DbtrAcct") && acc.dbtr_account.is_none() {
+                    acc.dbtr_account = Some(raw);
+                }
+            }
+        }
         _ => {}
     }
 }
@@ -191,23 +233,42 @@ fn finalize(acc: EntryAccum, idx: usize) -> Result<ParsedTxn, Vec<RowError>> {
         return Err(errs);
     }
 
+    let direction = direction.unwrap();
     let value_date = value_date.unwrap();
+    let amount_minor = amount_minor.unwrap();
+    let external_ref = external_ref.unwrap();
+
+    let (counterparty_bic, counterparty_account) = match direction {
+        // CRDT entry: our account received money → counterparty is the payer (Dbtr).
+        // Prefer Dbtr side; fall back to Cdtr if Dbtr is empty (some banks only
+        // include the counterparty side regardless of which is "our" side).
+        Direction::Credit => (
+            acc.dbtr_bic.or(acc.cdtr_bic),
+            acc.dbtr_account.or(acc.cdtr_account),
+        ),
+        // DBIT entry: our account paid → counterparty is the receiver (Cdtr).
+        Direction::Debit => (
+            acc.cdtr_bic.or(acc.dbtr_bic),
+            acc.cdtr_account.or(acc.dbtr_account),
+        ),
+    };
+
     let posted_at = acc
         .booking_date
         .filter(|s| !s.is_empty())
         .map(|d| if d.contains('T') { d } else { format!("{d}T00:00:00Z") });
 
     Ok(ParsedTxn {
-        external_ref: external_ref.unwrap(),
+        external_ref,
         value_date,
         posted_at,
-        amount_minor: amount_minor.unwrap(),
+        amount_minor,
         currency: acc.currency.filter(|s| !s.is_empty()),
-        direction: direction.unwrap(),
+        direction,
         counterparty: None,
         description: acc.ustrd.or(acc.addtl).unwrap_or_default(),
-        counterparty_bic: None,
-        counterparty_account: None,
+        counterparty_bic,
+        counterparty_account,
     })
 }
 
@@ -290,5 +351,118 @@ mod tests {
         let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
         assert_eq!(txns.len(), 1);
         assert_eq!(txns[0].value_date, "2026-05-10");
+    }
+
+    #[test]
+    fn credit_entry_extracts_counterparty_bic_and_account() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08">
+ <BkToCstmrStmt>
+  <Stmt>
+   <Id>S1</Id>
+   <Ntry>
+    <Amt Ccy="EUR">100.00</Amt>
+    <CdtDbtInd>CRDT</CdtDbtInd>
+    <BookgDt><Dt>2026-01-01</Dt></BookgDt>
+    <ValDt><Dt>2026-01-01</Dt></ValDt>
+    <AcctSvcrRef>R1</AcctSvcrRef>
+    <NtryDtls>
+     <TxDtls>
+      <Refs><EndToEndId>R1</EndToEndId></Refs>
+      <RltdPties>
+       <Cdtr><Nm>Receiver</Nm></Cdtr>
+       <CdtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></CdtrAcct>
+      </RltdPties>
+      <RltdAgts>
+       <CdtrAgt><FinInstnId><BIC>DEUTDEFF</BIC></FinInstnId></CdtrAgt>
+      </RltdAgts>
+     </TxDtls>
+    </NtryDtls>
+   </Ntry>
+  </Stmt>
+ </BkToCstmrStmt>
+</Document>"#;
+        let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
+        assert_eq!(txns.len(), 1);
+        // CRDT entry with only Cdtr* side populated → falls back to Cdtr side
+        // (Dbtr is empty so preferred branch is empty).
+        assert_eq!(txns[0].counterparty_bic.as_deref(), Some("DEUTDEFF"));
+        assert_eq!(
+            txns[0].counterparty_account.as_deref(),
+            Some("DE89370400440532013000")
+        );
+    }
+
+    #[test]
+    fn debit_entry_extracts_counterparty_from_dbtr_branches() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document><Stmt>
+  <Ntry>
+   <Amt Ccy="EUR">50.00</Amt>
+   <CdtDbtInd>DBIT</CdtDbtInd>
+   <BookgDt><Dt>2026-01-01</Dt></BookgDt>
+   <ValDt><Dt>2026-01-01</Dt></ValDt>
+   <AcctSvcrRef>R2</AcctSvcrRef>
+   <NtryDtls><TxDtls>
+    <Refs><EndToEndId>R2</EndToEndId></Refs>
+    <RltdPties>
+     <Dbtr><Nm>Payer</Nm></Dbtr>
+     <DbtrAcct><Id><IBAN>FR1420041010050500013M02606</IBAN></Id></DbtrAcct>
+    </RltdPties>
+    <RltdAgts>
+     <DbtrAgt><FinInstnId><BIC>BNPAFRPP</BIC></FinInstnId></DbtrAgt>
+    </RltdAgts>
+   </TxDtls></NtryDtls>
+  </Ntry>
+</Stmt></Document>"#;
+        let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
+        // DBIT entry with only Dbtr* side populated → falls back to Dbtr side.
+        assert_eq!(txns[0].counterparty_bic.as_deref(), Some("BNPAFRPP"));
+        assert_eq!(
+            txns[0].counterparty_account.as_deref(),
+            Some("FR1420041010050500013M02606")
+        );
+    }
+
+    #[test]
+    fn missing_rltd_pties_leaves_counterparty_fields_none() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document><Stmt>
+  <Ntry>
+   <Amt Ccy="EUR">10.00</Amt>
+   <CdtDbtInd>CRDT</CdtDbtInd>
+   <BookgDt><Dt>2026-01-01</Dt></BookgDt>
+   <ValDt><Dt>2026-01-01</Dt></ValDt>
+   <AcctSvcrRef>R3</AcctSvcrRef>
+   <NtryDtls><TxDtls><Refs><EndToEndId>R3</EndToEndId></Refs></TxDtls></NtryDtls>
+  </Ntry>
+</Stmt></Document>"#;
+        let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
+        assert!(txns[0].counterparty_bic.is_none());
+        assert!(txns[0].counterparty_account.is_none());
+    }
+
+    #[test]
+    fn non_iban_account_via_othr_id_is_picked_up() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Document><Stmt>
+  <Ntry>
+   <Amt Ccy="USD">10.00</Amt>
+   <CdtDbtInd>CRDT</CdtDbtInd>
+   <BookgDt><Dt>2026-01-01</Dt></BookgDt>
+   <ValDt><Dt>2026-01-01</Dt></ValDt>
+   <AcctSvcrRef>R4</AcctSvcrRef>
+   <NtryDtls><TxDtls>
+    <Refs><EndToEndId>R4</EndToEndId></Refs>
+    <RltdPties>
+     <Cdtr><Nm>US Vendor</Nm></Cdtr>
+     <CdtrAcct><Id><Othr><Id>1234567890</Id></Othr></Id></CdtrAcct>
+    </RltdPties>
+   </TxDtls></NtryDtls>
+  </Ntry>
+</Stmt></Document>"#;
+        let txns = Camt053Parser.parse(xml.as_bytes()).unwrap();
+        assert_eq!(txns[0].counterparty_account.as_deref(), Some("1234567890"));
+        assert!(txns[0].counterparty_bic.is_none());
     }
 }
