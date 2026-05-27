@@ -8,6 +8,7 @@ members = [
   "crates/recon-auth",
   "crates/recon-mail",
   "crates/recon-ingest",
+  "crates/recon-audit",
 ]
 
 [workspace.package]

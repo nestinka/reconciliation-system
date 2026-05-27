@@ -1,5 +1,6 @@
 use crate::rows::BreakRow;
 use crate::{Store, StoreError};
+use recon_audit;
 use recon_domain::*;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -75,6 +76,19 @@ impl Store {
             .bind(break_id)
             .fetch_one(&mut *tx)
             .await?;
+
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::CaseAssigned {
+                case_id: brk.case_id.clone(),
+                break_id: break_id.to_string(),
+                assignee_id: assignee_id.to_string(),
+            },
+        )
+        .await?;
+
         tx.commit().await?;
         Ok(updated.into_break(now))
     }
@@ -171,6 +185,19 @@ impl Store {
             sqlx::query("UPDATE breaks SET status = $1, assignee_id = COALESCE($2, assignee_id) WHERE case_id = $3 AND tenant_id = $4")
                 .bind(&status_str).bind(&assignee).bind(case_id).bind(tenant_id).execute(&mut *tx).await?;
         }
+
+        // Mirror the case event kind (e.g. "approved", "approval_requested") into the audit chain.
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            &ev.actor_id,
+            recon_audit::AuditPayload::CaseEventAppended {
+                case_id: case_id.to_string(),
+                break_id: case_snapshot.break_id.clone(),
+                event_kind: kind.clone(),
+            },
+        )
+        .await?;
 
         tx.commit().await?;
         self.load_case(tenant_id, case_id).await

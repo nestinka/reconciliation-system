@@ -11,6 +11,8 @@ impl Store {
 
         // Idempotent reset (children first to respect FKs).
         for t in [
+            "audit_anchors",
+            "audit_events",
             "case_events",
             "breaks",
             "match_decisions",

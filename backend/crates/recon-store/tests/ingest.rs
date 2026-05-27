@@ -28,7 +28,7 @@ async fn create_and_list_sources(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
         .execute(&store.pool).await.unwrap();
-    let s = store.create_source("t", SourceKind::Bank, "Acme Bank", "GBP").await.unwrap();
+    let s = store.create_source("t", SourceKind::Bank, "Acme Bank", "GBP", "actor").await.unwrap();
     assert!(s.id.starts_with("src-"));
     let got = store.get_source("t", &s.id).await.unwrap();
     assert_eq!(got.name, "Acme Bank");
@@ -64,7 +64,7 @@ async fn seed_source(store: &Store) {
 async fn ingest_happy_path(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     seed_source(&store).await;
-    let n = store.ingest_transactions("t", "s", &[txn("txn-1", "R1"), txn("txn-2", "R2")]).await.unwrap();
+    let n = store.ingest_transactions("t", "s", &[txn("txn-1", "R1"), txn("txn-2", "R2")], "actor", "00", "csv", 0).await.unwrap();
     assert_eq!(n, 2);
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM canonical_transactions WHERE source_id='s'")
         .fetch_one(&store.pool).await.unwrap();
@@ -75,7 +75,7 @@ async fn ingest_happy_path(pool: sqlx::PgPool) {
 async fn ingest_rejects_within_batch_dup(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     seed_source(&store).await;
-    let err = store.ingest_transactions("t", "s", &[txn("txn-1", "R1"), txn("txn-2", "R1")]).await.unwrap_err();
+    let err = store.ingest_transactions("t", "s", &[txn("txn-1", "R1"), txn("txn-2", "R1")], "actor", "00", "csv", 0).await.unwrap_err();
     match err {
         recon_store::StoreError::DuplicateRefs(refs) => assert_eq!(refs, vec!["R1".to_string()]),
         other => panic!("expected DuplicateRefs, got {other:?}"),
@@ -89,8 +89,8 @@ async fn ingest_rejects_within_batch_dup(pool: sqlx::PgPool) {
 async fn ingest_rejects_existing_ref(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     seed_source(&store).await;
-    store.ingest_transactions("t", "s", &[txn("txn-1", "R1")]).await.unwrap();
-    let err = store.ingest_transactions("t", "s", &[txn("txn-2", "R1")]).await.unwrap_err();
+    store.ingest_transactions("t", "s", &[txn("txn-1", "R1")], "actor", "00", "csv", 0).await.unwrap();
+    let err = store.ingest_transactions("t", "s", &[txn("txn-2", "R1")], "actor", "00", "csv", 0).await.unwrap_err();
     assert!(matches!(err, recon_store::StoreError::DuplicateRefs(_)));
 }
 
@@ -98,7 +98,7 @@ async fn ingest_rejects_existing_ref(pool: sqlx::PgPool) {
 async fn ingest_into_foreign_source_is_not_found(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     seed_source(&store).await;
-    let err = store.ingest_transactions("other", "s", &[txn("txn-1", "R1")]).await.unwrap_err();
+    let err = store.ingest_transactions("other", "s", &[txn("txn-1", "R1")], "actor", "00", "csv", 0).await.unwrap_err();
     assert!(matches!(err, recon_store::StoreError::NotFound));
 }
 
@@ -106,8 +106,8 @@ async fn ingest_into_foreign_source_is_not_found(pool: sqlx::PgPool) {
 async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')").execute(&store.pool).await.unwrap();
-    let bank = store.create_source("t", SourceKind::Bank, "Bank", "GBP").await.unwrap();
-    let ledger = store.create_source("t", SourceKind::Ledger, "Ledger", "GBP").await.unwrap();
+    let bank = store.create_source("t", SourceKind::Bank, "Bank", "GBP", "actor").await.unwrap();
+    let ledger = store.create_source("t", SourceKind::Ledger, "Ledger", "GBP", "actor").await.unwrap();
 
     // One matching pair (same amount/date) and one bank-only break.
     let mk = |id: &str, src: &str, eref: &str, amt: i64| CanonicalTransaction {
@@ -116,10 +116,10 @@ async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
         amount_minor: amt, currency: "GBP".into(), direction: Direction::Debit,
         counterparty: None, description: "x".into(),
     };
-    store.ingest_transactions("t", &bank.id, &[mk("txn-a1", &bank.id, "A1", 1000), mk("txn-a2", &bank.id, "A2", 9999)]).await.unwrap();
-    store.ingest_transactions("t", &ledger.id, &[mk("txn-b1", &ledger.id, "B1", 1000)]).await.unwrap();
+    store.ingest_transactions("t", &bank.id, &[mk("txn-a1", &bank.id, "A1", 1000), mk("txn-a2", &bank.id, "A2", 9999)], "actor", "00", "csv", 0).await.unwrap();
+    store.ingest_transactions("t", &ledger.id, &[mk("txn-b1", &ledger.id, "B1", 1000)], "actor", "00", "csv", 0).await.unwrap();
 
-    let run = store.create_run("t", "Test run", &bank.id, &ledger.id, "2026-05-01", "2026-05-31").await.unwrap();
+    let run = store.create_run("t", "Test run", &bank.id, &ledger.id, "2026-05-01", "2026-05-31", "actor").await.unwrap();
     assert_eq!(run.status, recon_domain::RunStatus::Completed);
 
     // The run is readable back with breaks.
@@ -128,5 +128,5 @@ async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
     assert!(!detail.unmatched.is_empty(), "the bank-only txn should be a break");
 
     // Foreign tenant cannot create runs against these sources.
-    assert!(store.create_run("other", "x", &bank.id, &ledger.id, "2026-05-01", "2026-05-31").await.is_err());
+    assert!(store.create_run("other", "x", &bank.id, &ledger.id, "2026-05-01", "2026-05-31", "actor").await.is_err());
 }

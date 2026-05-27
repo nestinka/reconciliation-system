@@ -10,6 +10,7 @@ use axum::{
 use recon_ingest::Parser;
 use recon_store::read::{BreakFilter, RunFilter};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 
 pub fn router(state: AppState) -> Router {
     let mut r = Router::new()
@@ -46,7 +47,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/breaks", get(list_breaks))
         .route("/api/breaks/:break_id/assign", post(assign_break))
         .route("/api/cases/:case_id", get(get_case))
-        .route("/api/cases/:case_id/events", post(append_event));
+        .route("/api/cases/:case_id/events", post(append_event))
+        // Audit/compliance read-side.
+        .route("/api/audit", get(crate::routes_audit::list_audit))
+        .route("/api/audit/verify", post(crate::routes_audit::verify_audit))
+        .route("/api/audit/anchor", post(crate::routes_audit::anchor_audit))
+        .route("/api/audit/anchors", get(crate::routes_audit::list_anchors))
+        .route("/api/audit/controls", get(crate::routes_audit::list_controls));
     // Dev-only: reset the DB to seeded state (used by E2E). Gated by RECON_DEV.
     if std::env::var("RECON_DEV").is_ok() {
         r = r.route("/api/dev/reseed", post(dev_reseed));
@@ -214,7 +221,7 @@ async fn create_source(
     }
     let src = s
         .store
-        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency)
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id)
         .await?;
     Ok(Json(json!(src)))
 }
@@ -242,7 +249,15 @@ async fn create_run(
     }
     let run = s
         .store
-        .create_run(&ctx.tenant_id, &body.name, &body.source_a_id, &body.source_b_id, &body.from, &body.to)
+        .create_run(
+            &ctx.tenant_id,
+            &body.name,
+            &body.source_a_id,
+            &body.source_b_id,
+            &body.from,
+            &body.to,
+            &ctx.user_id,
+        )
         .await?;
     Ok(Json(json!(run)))
 }
@@ -317,6 +332,21 @@ async fn ingest_source(
         })
         .collect();
 
-    let n = s.store.ingest_transactions(&ctx.tenant_id, &source_id, &txns).await?;
+    // Hash the EXACT bytes consumed by the parser so the audit row pins the
+    // file content the ingest actually persisted.
+    let file_sha256 = hex::encode(Sha256::digest(&bytes));
+    let file_bytes_len = bytes.len() as i64;
+    let n = s
+        .store
+        .ingest_transactions(
+            &ctx.tenant_id,
+            &source_id,
+            &txns,
+            &ctx.user_id,
+            &file_sha256,
+            &format,
+            file_bytes_len,
+        )
+        .await?;
     Ok(Json(json!({ "ingested": n, "sourceId": source_id })))
 }

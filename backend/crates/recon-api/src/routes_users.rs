@@ -40,7 +40,15 @@ pub async fn create_user(
     let hash = recon_auth::password::hash_password(&req.password).map_err(|_| ApiError::BadRequest())?;
     state
         .store
-        .create_user_with_membership(&id, &req.name, &req.email, &hash, &ctx.tenant_id, req.role)
+        .create_user_with_membership(
+            &id,
+            &req.name,
+            &req.email,
+            &hash,
+            &ctx.tenant_id,
+            req.role,
+            &ctx.user_id,
+        )
         .await?;
     let user = recon_domain::User {
         id,
@@ -64,12 +72,20 @@ pub async fn patch_user(
         return Err(ApiError::NotFound());
     }
     if let Some(role) = req.role {
-        if state.store.update_membership_role(&user_id, &ctx.tenant_id, role).await? == 0 {
+        if state
+            .store
+            .update_membership_role(&user_id, &ctx.tenant_id, role, &ctx.user_id)
+            .await?
+            == 0
+        {
             return Err(ApiError::NotFound());
         }
     }
     if let Some(disabled) = req.disabled {
-        state.store.set_user_disabled(&user_id, disabled).await?;
+        state
+            .store
+            .set_user_disabled(&user_id, disabled, &ctx.tenant_id, &ctx.user_id)
+            .await?;
     }
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
@@ -80,7 +96,12 @@ pub async fn delete_user(
     Path(user_id): Path<String>,
 ) -> Result<axum::http::StatusCode, ApiError> {
     require_admin(&ctx)?;
-    if state.store.remove_membership(&user_id, &ctx.tenant_id).await? == 0 {
+    if state
+        .store
+        .remove_membership(&user_id, &ctx.tenant_id, &ctx.user_id)
+        .await?
+        == 0
+    {
         return Err(ApiError::NotFound());
     }
     Ok(axum::http::StatusCode::NO_CONTENT)

@@ -102,8 +102,9 @@ impl Store {
     }
 
     // --- lockout / credential mutations ---
-    pub async fn record_login_failure(
+    pub async fn record_login_failure_tx(
         &self,
+        tx: &mut sqlx::PgConnection,
         user_id: &str,
         locked_until_unix: Option<i64>,
     ) -> Result<(), StoreError> {
@@ -114,21 +115,39 @@ impl Store {
         )
         .bind(user_id)
         .bind(lu)
-        .execute(&self.pool)
+        .execute(&mut *tx)
+        .await
+        .map_err(StoreError::from)?;
+        Ok(())
+    }
+
+    pub async fn record_login_failure(
+        &self,
+        user_id: &str,
+        locked_until_unix: Option<i64>,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.record_login_failure_tx(&mut conn, user_id, locked_until_unix).await
+    }
+
+    pub async fn reset_login_failures_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        user_id: &str,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            "UPDATE user_credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
     pub async fn reset_login_failures(&self, user_id: &str) -> Result<(), StoreError> {
-        sqlx::query(
-            "UPDATE user_credentials SET failed_attempts = 0, locked_until = NULL WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .execute(&self.pool)
-        .await
-        .map_err(StoreError::from)?;
-        Ok(())
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.reset_login_failures_tx(&mut conn, user_id).await
     }
 
     pub async fn current_failed_attempts(&self, user_id: &str) -> Result<i32, StoreError> {
@@ -151,21 +170,33 @@ impl Store {
         .map_err(StoreError::from)
     }
 
-    pub async fn set_password(&self, user_id: &str, password_hash: &str) -> Result<(), StoreError> {
+    pub async fn set_password_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        user_id: &str,
+        password_hash: &str,
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "UPDATE user_credentials SET password_hash=$2, password_updated_at=now(), failed_attempts=0, locked_until=NULL WHERE user_id=$1",
         )
         .bind(user_id)
         .bind(password_hash)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
+    pub async fn set_password(&self, user_id: &str, password_hash: &str) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.set_password_tx(&mut conn, user_id, password_hash).await
+    }
+
     // --- refresh tokens ---
-    pub async fn insert_refresh(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn insert_refresh_tx(
         &self,
+        tx: &mut sqlx::PgConnection,
         id: &str,
         user_id: &str,
         tenant_id: &str,
@@ -183,14 +214,37 @@ impl Store {
         .bind(token_hash)
         .bind(exp)
         .bind(rotated_from)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
-    pub async fn find_live_refresh(
+    pub async fn insert_refresh(
         &self,
+        id: &str,
+        user_id: &str,
+        tenant_id: &str,
+        token_hash: &str,
+        expires_at_unix: i64,
+        rotated_from: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.insert_refresh_tx(
+            &mut conn,
+            id,
+            user_id,
+            tenant_id,
+            token_hash,
+            expires_at_unix,
+            rotated_from,
+        )
+        .await
+    }
+
+    pub async fn find_live_refresh_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
         token_hash: &str,
         now_unix: i64,
     ) -> Result<Option<(String, String, String)>, StoreError> {
@@ -200,71 +254,126 @@ impl Store {
         )
         .bind(token_hash)
         .bind(now)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(r)
     }
 
-    pub async fn refresh_is_revoked(&self, token_hash: &str) -> Result<bool, StoreError> {
+    pub async fn find_live_refresh(
+        &self,
+        token_hash: &str,
+        now_unix: i64,
+    ) -> Result<Option<(String, String, String)>, StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.find_live_refresh_tx(&mut conn, token_hash, now_unix).await
+    }
+
+    pub async fn refresh_is_revoked_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        token_hash: &str,
+    ) -> Result<bool, StoreError> {
         Ok(sqlx::query_scalar::<_, i64>(
             "SELECT count(*) FROM refresh_tokens WHERE token_hash=$1 AND revoked_at IS NOT NULL",
         )
         .bind(token_hash)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(StoreError::from)?
             > 0)
     }
 
+    pub async fn refresh_is_revoked(&self, token_hash: &str) -> Result<bool, StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.refresh_is_revoked_tx(&mut conn, token_hash).await
+    }
+
     /// Find the owning user of any refresh row by hash (used for reuse-detection revocation).
-    pub async fn refresh_owner(&self, token_hash: &str) -> Result<Option<String>, StoreError> {
+    pub async fn refresh_owner_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        token_hash: &str,
+    ) -> Result<Option<String>, StoreError> {
         sqlx::query_scalar::<_, String>(
             "SELECT user_id FROM refresh_tokens WHERE token_hash=$1 LIMIT 1",
         )
         .bind(token_hash)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(StoreError::from)
     }
 
-    pub async fn revoke_refresh(&self, id: &str) -> Result<(), StoreError> {
+    pub async fn refresh_owner(&self, token_hash: &str) -> Result<Option<String>, StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.refresh_owner_tx(&mut conn, token_hash).await
+    }
+
+    pub async fn revoke_refresh_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        id: &str,
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "UPDATE refresh_tokens SET revoked_at=now() WHERE id=$1 AND revoked_at IS NULL",
         )
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
+    pub async fn revoke_refresh(&self, id: &str) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.revoke_refresh_tx(&mut conn, id).await
+    }
+
     /// Revoke by token hash (used by logout, which only has the cookie's hash).
-    pub async fn revoke_refresh_by_hash(&self, token_hash: &str) -> Result<(), StoreError> {
+    pub async fn revoke_refresh_by_hash_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        token_hash: &str,
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "UPDATE refresh_tokens SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL",
         )
         .bind(token_hash)
-        .execute(&self.pool)
+        .execute(&mut *tx)
+        .await
+        .map_err(StoreError::from)?;
+        Ok(())
+    }
+
+    pub async fn revoke_refresh_by_hash(&self, token_hash: &str) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.revoke_refresh_by_hash_tx(&mut conn, token_hash).await
+    }
+
+    pub async fn revoke_all_refresh_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        user_id: &str,
+    ) -> Result<(), StoreError> {
+        sqlx::query(
+            "UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
     pub async fn revoke_all_refresh(&self, user_id: &str) -> Result<(), StoreError> {
-        sqlx::query(
-            "UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL",
-        )
-        .bind(user_id)
-        .execute(&self.pool)
-        .await
-        .map_err(StoreError::from)?;
-        Ok(())
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.revoke_all_refresh_tx(&mut conn, user_id).await
     }
 
     // --- password reset tokens ---
-    pub async fn insert_reset_token(
+    pub async fn insert_reset_token_tx(
         &self,
+        tx: &mut sqlx::PgConnection,
         id: &str,
         user_id: &str,
         token_hash: &str,
@@ -278,14 +387,26 @@ impl Store {
         .bind(user_id)
         .bind(token_hash)
         .bind(exp)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(())
     }
 
-    pub async fn consume_reset_token(
+    pub async fn insert_reset_token(
         &self,
+        id: &str,
+        user_id: &str,
+        token_hash: &str,
+        expires_at_unix: i64,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.insert_reset_token_tx(&mut conn, id, user_id, token_hash, expires_at_unix).await
+    }
+
+    pub async fn consume_reset_token_tx(
+        &self,
+        tx: &mut sqlx::PgConnection,
         token_hash: &str,
         now_unix: i64,
     ) -> Result<Option<String>, StoreError> {
@@ -295,10 +416,19 @@ impl Store {
         )
         .bind(token_hash)
         .bind(now)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(StoreError::from)?;
         Ok(r)
+    }
+
+    pub async fn consume_reset_token(
+        &self,
+        token_hash: &str,
+        now_unix: i64,
+    ) -> Result<Option<String>, StoreError> {
+        let mut conn = self.pool.acquire().await.map_err(StoreError::from)?;
+        self.consume_reset_token_tx(&mut conn, token_hash, now_unix).await
     }
 
     // --- admin user management (scoped to a tenant) ---
@@ -323,6 +453,7 @@ impl Store {
             .collect())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_user_with_membership(
         &self,
         id: &str,
@@ -331,6 +462,7 @@ impl Store {
         password_hash: &str,
         tenant_id: &str,
         role: UserRole,
+        actor_id: &str,
     ) -> Result<(), StoreError> {
         let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
         sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ($1,$2,$3,false)")
@@ -358,6 +490,17 @@ impl Store {
             .execute(&mut *tx)
             .await
             .map_err(StoreError::from)?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserCreated {
+                user_id: id.to_string(),
+                email: email.to_string(),
+                role: role_str(role).to_string(),
+            },
+        )
+        .await?;
         tx.commit().await.map_err(StoreError::from)?;
         Ok(())
     }
@@ -367,15 +510,42 @@ impl Store {
         user_id: &str,
         tenant_id: &str,
         role: UserRole,
+        actor_id: &str,
     ) -> Result<u64, StoreError> {
-        let r =
-            sqlx::query("UPDATE memberships SET role=$3 WHERE user_id=$1 AND tenant_id=$2")
-                .bind(user_id)
-                .bind(tenant_id)
-                .bind(role_str(role))
-                .execute(&self.pool)
-                .await
-                .map_err(StoreError::from)?;
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
+        // Fetch the current role inside the tx for atomicity. If the membership
+        // doesn't exist we return 0 without emitting an audit.
+        let current: Option<String> = sqlx::query_scalar(
+            "SELECT role FROM memberships WHERE user_id=$1 AND tenant_id=$2 FOR UPDATE",
+        )
+        .bind(user_id)
+        .bind(tenant_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(StoreError::from)?;
+        let Some(from_role) = current else {
+            return Ok(0);
+        };
+        let to_role = role_str(role).to_string();
+        let r = sqlx::query("UPDATE memberships SET role=$3 WHERE user_id=$1 AND tenant_id=$2")
+            .bind(user_id)
+            .bind(tenant_id)
+            .bind(role_str(role))
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::from)?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserRoleChanged {
+                user_id: user_id.to_string(),
+                from: from_role,
+                to: to_role,
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(r.rows_affected())
     }
 
@@ -383,13 +553,27 @@ impl Store {
         &self,
         user_id: &str,
         disabled: bool,
+        tenant_id: &str,
+        actor_id: &str,
     ) -> Result<(), StoreError> {
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
         sqlx::query("UPDATE users SET disabled=$2 WHERE id=$1")
             .bind(user_id)
             .bind(disabled)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(StoreError::from)?;
+        let payload = if disabled {
+            recon_audit::AuditPayload::AdminUserDisabled {
+                user_id: user_id.to_string(),
+            }
+        } else {
+            recon_audit::AuditPayload::AdminUserEnabled {
+                user_id: user_id.to_string(),
+            }
+        };
+        self.append_audit(&mut tx, tenant_id, actor_id, payload).await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(())
     }
 
@@ -397,14 +581,30 @@ impl Store {
         &self,
         user_id: &str,
         tenant_id: &str,
+        actor_id: &str,
     ) -> Result<u64, StoreError> {
-        let r =
-            sqlx::query("DELETE FROM memberships WHERE user_id=$1 AND tenant_id=$2")
-                .bind(user_id)
-                .bind(tenant_id)
-                .execute(&self.pool)
-                .await
-                .map_err(StoreError::from)?;
+        let mut tx = self.pool.begin().await.map_err(StoreError::from)?;
+        let r = sqlx::query("DELETE FROM memberships WHERE user_id=$1 AND tenant_id=$2")
+            .bind(user_id)
+            .bind(tenant_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(StoreError::from)?;
+        if r.rows_affected() == 0 {
+            // Nothing removed → no audit, just commit (no-op) for symmetry.
+            tx.commit().await.map_err(StoreError::from)?;
+            return Ok(0);
+        }
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::AdminUserRemoved {
+                user_id: user_id.to_string(),
+            },
+        )
+        .await?;
+        tx.commit().await.map_err(StoreError::from)?;
         Ok(r.rows_affected())
     }
 

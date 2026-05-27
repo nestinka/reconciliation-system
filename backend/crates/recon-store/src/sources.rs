@@ -27,16 +27,31 @@ impl Store {
         kind: SourceKind,
         name: &str,
         currency: &str,
+        actor_id: &str,
     ) -> Result<Source, StoreError> {
         let id = format!("src-{}", Uuid::new_v4());
+        let mut tx = self.pool.begin().await?;
         sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency) VALUES ($1,$2,$3,$4,$5)")
             .bind(&id)
             .bind(tenant_id)
             .bind(kind_str(kind))
             .bind(name)
             .bind(currency)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::DataSourceCreated {
+                source_id: id.clone(),
+                kind: kind_str(kind).to_string(),
+                currency: currency.to_string(),
+                name: name.to_string(),
+            },
+        )
+        .await?;
+        tx.commit().await?;
         Ok(Source { id, tenant_id: tenant_id.to_string(), kind, name: name.to_string(), currency: currency.to_string() })
     }
 
@@ -103,11 +118,16 @@ impl Store {
     /// Insert fully-formed transactions into a source, atomically. Rejects the
     /// whole batch (storing nothing) if any external_ref is duplicated within
     /// the batch or already present in the source.
+    #[allow(clippy::too_many_arguments)]
     pub async fn ingest_transactions(
         &self,
         tenant_id: &str,
         source_id: &str,
         txns: &[CanonicalTransaction],
+        actor_id: &str,
+        file_sha256: &str,
+        file_format: &str,
+        file_bytes: i64,
     ) -> Result<usize, StoreError> {
         // Source must belong to the caller's tenant.
         self.get_source(tenant_id, source_id).await?;
@@ -165,6 +185,19 @@ impl Store {
                 other => StoreError::Db(other),
             })?;
         }
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::DataIngestCompleted {
+                source_id: source_id.to_string(),
+                format: file_format.to_string(),
+                file_sha256: file_sha256.to_string(),
+                bytes: file_bytes,
+                ingested: txns.len() as i64,
+            },
+        )
+        .await?;
         tx.commit().await?;
         Ok(txns.len())
     }

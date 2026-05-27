@@ -95,4 +95,47 @@ describe("MockApiClient", () => {
     const run = await c.createRun("tenant-acme", { name: "R", sourceAId: "a", sourceBId: "b", from: "2026-05-01", to: "2026-05-31" });
     expect(run.id).toMatch(/^run-/);
   });
+
+  it("listAudit returns items for tenant", async () => {
+    const c = api();
+    const page = await c.listAudit("tenant-acme");
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.items.every((e) => e.tenantId === "tenant-acme")).toBe(true);
+    // Sorted by seq desc
+    for (let i = 1; i < page.items.length; i++) {
+      expect(page.items[i - 1].seq).toBeGreaterThan(page.items[i].seq);
+    }
+  });
+
+  it("verifyAudit returns valid", async () => {
+    const c = api();
+    const r = await c.verifyAudit("tenant-acme", {});
+    expect(r.status).toBe("valid");
+    expect(r.checked).toBeGreaterThan(0);
+  });
+
+  it("anchorAudit returns a seq", async () => {
+    const c = api();
+    const a = await c.anchorAudit("tenant-acme");
+    expect(typeof a.anchorSeq).toBe("number");
+    expect(a.hash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("listAnchors returns array", async () => {
+    const c = api();
+    const anchors = await c.listAnchors("tenant-acme");
+    expect(Array.isArray(anchors)).toBe(true);
+    expect(anchors.length).toBeGreaterThan(0);
+    expect(anchors[0].anchorSeq).toBeDefined();
+  });
+
+  it("listControls returns three frameworks", async () => {
+    const c = api();
+    const controls = await c.listControls();
+    expect(controls.length).toBe(3);
+    const frameworks = controls.map((x) => x.framework);
+    expect(frameworks).toContain("ISO 27001");
+    expect(frameworks).toContain("SOC 2");
+    expect(frameworks).toContain("FCA");
+  });
 });

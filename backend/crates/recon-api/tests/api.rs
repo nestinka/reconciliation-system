@@ -195,6 +195,131 @@ async fn write_requires_auth(pool: sqlx::PgPool) {
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Audit (D1): list / verify / anchor / controls + RBAC
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// POST /auth/login as the given seeded user; returns (status, accessToken).
+async fn login_as(
+    app: &axum::Router,
+    email: &str,
+    password: &str,
+) -> (StatusCode, Option<String>) {
+    let body = serde_json::json!({ "email": email, "password": password });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let token = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|v| v["accessToken"].as_str().map(|s| s.to_string()));
+    (status, token)
+}
+
+#[sqlx::test]
+async fn non_admin_forbidden_on_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "mia@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let (st, _) = get_json(&app, "/api/audit", Some(&auth)).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "operator must not list audit");
+}
+
+#[sqlx::test]
+async fn admin_can_list_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let (st, v) = get_json(&app, "/api/audit", Some(&auth)).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(v["items"].is_array(), "expected items array, got: {v}");
+    // The login above emitted at least one auth.login.success event into the
+    // admin's tenant chain, so the list must be non-empty.
+    assert!(
+        !v["items"].as_array().unwrap().is_empty(),
+        "expected audit items after login: {v}"
+    );
+    let first = &v["items"].as_array().unwrap()[0];
+    assert!(first["kind"].is_string());
+    assert!(first["seq"].is_number());
+    assert!(first["hash"].is_string());
+    assert!(first["prevHash"].is_string());
+}
+
+#[sqlx::test]
+async fn verify_on_clean_chain_returns_valid(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    // Warm up: confirm there are events to verify.
+    let (st, _list) = get_json(&app, "/api/audit", Some(&auth)).await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, v) = post_json_as(&app, "/api/audit/verify", &auth, serde_json::json!({})).await;
+    assert_eq!(st, StatusCode::OK, "verify response: {v}");
+    assert_eq!(v["status"], "valid", "clean chain should verify: {v}");
+}
+
+#[sqlx::test]
+async fn verify_after_tamper_returns_invalid(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool.clone()).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    // Tamper with one row's payload directly via SQL. The chain re-hash will mismatch.
+    // We mutate the row for ada's own tenant so the verify call (which uses the
+    // caller's tenant_id) sees the corruption.
+    let n = sqlx::query(
+        "UPDATE audit_events SET payload = jsonb_set(payload, '{data,email}', '\"tampered@x.test\"') \
+         WHERE tenant_id = $1 AND kind = 'auth.login.success' \
+         AND seq = (SELECT min(seq) FROM audit_events WHERE tenant_id = $1 AND kind = 'auth.login.success')",
+    )
+    .bind("tenant-acme")
+    .execute(&pool)
+    .await
+    .unwrap()
+    .rows_affected();
+    assert!(n >= 1, "expected to tamper at least one row");
+    let (st, v) = post_json_as(&app, "/api/audit/verify", &auth, serde_json::json!({})).await;
+    assert_eq!(st, StatusCode::OK, "verify of tampered chain should still be 200: {v}");
+    assert_eq!(v["status"], "invalid", "tampered chain should be invalid: {v}");
+    assert!(v["firstBrokenSeq"].is_number(), "expected firstBrokenSeq: {v}");
+}
+
+#[sqlx::test]
+async fn anchor_endpoint_writes_row(pool: sqlx::PgPool) {
+    let (app, _cfg) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    // Trigger an anchor.
+    let (st, v) = post_json_as(&app, "/api/audit/anchor", &auth, serde_json::json!({})).await;
+    assert_eq!(st, StatusCode::OK, "anchor response: {v}");
+    assert!(v["anchorSeq"].is_number(), "expected anchorSeq: {v}");
+    assert!(v["hash"].is_string(), "expected hex hash: {v}");
+    // List anchors and confirm we have at least one row.
+    let (st, anchors) = get_json(&app, "/api/audit/anchors", Some(&auth)).await;
+    assert_eq!(st, StatusCode::OK);
+    let arr = anchors.as_array().expect("expected anchor array");
+    assert!(!arr.is_empty(), "expected at least one anchor row: {anchors}");
+    assert!(arr[0]["anchorSeq"].is_number());
+    assert!(arr[0]["hash"].is_string());
+    assert!(arr[0]["prevHash"].is_string());
+    assert!(arr[0]["tenantHeads"].is_object() || arr[0]["tenantHeads"].is_null());
+}
+
 #[sqlx::test]
 async fn assign_break_sets_assignee(pool: sqlx::PgPool) {
     let (app, cfg) = seeded_app(pool).await;

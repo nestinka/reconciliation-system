@@ -681,3 +681,216 @@ async fn approval_requires_approver_role(pool: sqlx::PgPool) {
     );
     assert_eq!(body["status"], "resolved", "case should be resolved: {body}");
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// C5: auth-flow audit emission. Each handler must emit the relevant auth.* event
+// inside the same tx that performs the mutation. These tests assert at least one
+// matching row exists in audit_events after the action — the same-tx guarantee
+// is enforced by the surrounding code; we're verifying the wiring.
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn audit_count(pool: &sqlx::PgPool, kind: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>("SELECT count(*) FROM audit_events WHERE kind=$1")
+        .bind(kind)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+}
+
+async fn audit_count_for_actor(pool: &sqlx::PgPool, kind: &str, actor: &str) -> i64 {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM audit_events WHERE kind=$1 AND actor_id=$2",
+    )
+    .bind(kind)
+    .bind(actor)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+#[sqlx::test]
+async fn login_success_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = auth_app(pool.clone()).await;
+    let before = audit_count(&pool, "auth.login.success").await;
+    let (status, _, _) = do_login(&app, "mia@acme.test", "Password123!").await;
+    assert_eq!(status, StatusCode::OK);
+    let after = audit_count(&pool, "auth.login.success").await;
+    assert_eq!(after - before, 1, "expected one auth.login.success row");
+    assert_eq!(
+        audit_count_for_actor(&pool, "auth.login.success", "user-mia").await,
+        1,
+        "audit row's actor should be the logging-in user"
+    );
+}
+
+#[sqlx::test]
+async fn login_failure_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = auth_app(pool.clone()).await;
+    let (status, _, _) = do_login(&app, "mia@acme.test", "WrongPassword!").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        audit_count(&pool, "auth.login.failure").await,
+        1,
+        "expected one auth.login.failure row"
+    );
+
+    // Unknown email → no audit row (no chain to attach it to).
+    let (status, _, _) = do_login(&app, "ghost@nowhere.test", "WrongPassword!").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        audit_count(&pool, "auth.login.failure").await,
+        1,
+        "unknown-email failure must NOT emit (no tenant chain)"
+    );
+}
+
+#[sqlx::test]
+async fn logout_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = auth_app(pool.clone()).await;
+    let (status, _, set_cookie) = do_login(&app, "mia@acme.test", "Password123!").await;
+    assert_eq!(status, StatusCode::OK);
+    let cookie_header = set_cookie.expect("set-cookie from login");
+    let refresh_value = extract_refresh_value(&cookie_header).expect("recon_refresh");
+
+    let before = audit_count(&pool, "auth.logout").await;
+    let status = do_logout(&app, &refresh_value).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let after = audit_count(&pool, "auth.logout").await;
+    assert_eq!(after - before, 1, "expected one auth.logout row");
+}
+
+#[sqlx::test]
+async fn change_password_emits_audit(pool: sqlx::PgPool) {
+    let (app, cfg) = auth_app(pool.clone()).await;
+    let mia_bearer = bearer(&cfg, "user-mia", "tenant-acme", UserRole::Operator);
+    let before = audit_count(&pool, "auth.password.changed").await;
+
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/password",
+        Some(&mia_bearer),
+        None,
+        serde_json::json!({ "currentPassword": "Password123!", "newPassword": "NewPass123!" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let after = audit_count(&pool, "auth.password.changed").await;
+    assert_eq!(after - before, 1, "expected one auth.password.changed row");
+}
+
+#[sqlx::test]
+async fn forgot_password_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = auth_app(pool.clone()).await;
+    let before = audit_count(&pool, "auth.password.reset_requested").await;
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/forgot",
+        None,
+        None,
+        serde_json::json!({ "email": "mia@acme.test" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let after = audit_count(&pool, "auth.password.reset_requested").await;
+    assert_eq!(after - before, 1, "expected one auth.password.reset_requested row");
+
+    // Unknown email → no audit row.
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/forgot",
+        None,
+        None,
+        serde_json::json!({ "email": "ghost@nowhere.test" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(
+        audit_count(&pool, "auth.password.reset_requested").await - before,
+        1,
+        "unknown-email forgot must NOT emit"
+    );
+}
+
+#[sqlx::test]
+async fn reset_password_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg, mailer) = auth_app_with_capture(pool.clone()).await;
+
+    // Trigger a reset token email.
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/forgot",
+        None,
+        None,
+        serde_json::json!({ "email": "mia@acme.test" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    let token = {
+        let sent = mailer.sent.lock().unwrap();
+        sent[0]
+            .body
+            .split("/reset?token=")
+            .nth(1)
+            .and_then(|s| s.split_whitespace().next())
+            .unwrap_or("")
+            .to_string()
+    };
+    assert!(!token.is_empty());
+
+    let before = audit_count(&pool, "auth.password.reset_completed").await;
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/reset",
+        None,
+        None,
+        serde_json::json!({ "token": token, "newPassword": "ResetPass1!" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let after = audit_count(&pool, "auth.password.reset_completed").await;
+    assert_eq!(after - before, 1, "expected one auth.password.reset_completed row");
+}
+
+#[sqlx::test]
+async fn switch_tenant_emits_audit(pool: sqlx::PgPool) {
+    let (app, cfg) = auth_app(pool.clone()).await;
+
+    // ada is a member of both tenants.
+    let ada_bearer = bearer(&cfg, "user-ada", "tenant-acme", UserRole::Admin);
+    let before = audit_count(&pool, "auth.tenant.switched").await;
+
+    let (status, _, _) = post_json(
+        &app,
+        "/auth/switch-tenant",
+        Some(&ada_bearer),
+        None,
+        serde_json::json!({ "tenantId": "tenant-globex" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let after = audit_count(&pool, "auth.tenant.switched").await;
+    assert_eq!(after - before, 1, "expected one auth.tenant.switched row");
+}
+
+// auth.refresh.reused emission is exercised implicitly by `refresh_rotates_and_detects_reuse`
+// (theft path is taken); the dedicated assertion lives here so the test file documents the
+// expectation as a first-class invariant.
+#[sqlx::test]
+async fn refresh_reuse_emits_audit(pool: sqlx::PgPool) {
+    let (app, _cfg) = auth_app(pool.clone()).await;
+    let (status, _, set_cookie) = do_login(&app, "mia@acme.test", "Password123!").await;
+    assert_eq!(status, StatusCode::OK);
+    let old_cookie_header = set_cookie.expect("set-cookie from login");
+    let old_refresh = extract_refresh_value(&old_cookie_header).expect("recon_refresh");
+
+    // First refresh succeeds and revokes the old token.
+    let (status, _, _) = do_refresh(&app, &old_refresh).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let before = audit_count(&pool, "auth.refresh.reused").await;
+    // Replay the OLD cookie → reuse detected → 401 + audit.
+    let (status, _, _) = do_refresh(&app, &old_refresh).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let after = audit_count(&pool, "auth.refresh.reused").await;
+    assert_eq!(after - before, 1, "expected one auth.refresh.reused row");
+}

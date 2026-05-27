@@ -116,6 +116,7 @@ async fn create_and_list_users(pool: sqlx::PgPool) {
             "$argon2id$x",
             "t1",
             UserRole::Operator,
+            "admin",
         )
         .await
         .unwrap();
@@ -124,7 +125,7 @@ async fn create_and_list_users(pool: sqlx::PgPool) {
     assert_eq!(users[0].email, "op@acme.test");
     assert_eq!(
         store
-            .update_membership_role("u9", "t1", UserRole::Approver)
+            .update_membership_role("u9", "t1", UserRole::Approver, "admin")
             .await
             .unwrap(),
         1
@@ -151,6 +152,7 @@ async fn duplicate_email_returns_conflict(pool: sqlx::PgPool) {
             "$argon2id$x",
             "t1",
             UserRole::Operator,
+            "admin",
         )
         .await
         .unwrap();
@@ -162,6 +164,7 @@ async fn duplicate_email_returns_conflict(pool: sqlx::PgPool) {
             "$argon2id$x",
             "t1",
             UserRole::Operator,
+            "admin",
         )
         .await
         .unwrap_err();

@@ -1,0 +1,253 @@
+use recon_audit::chain::VerifyStatus;
+use recon_audit::{AuditKind, AuditPayload};
+use recon_store::audit::AuditFilter;
+use recon_store::Store;
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn audit_tables_exist(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    // Inserting a no-op tenant + a single row exercises the schema.
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO audit_events(tenant_id,seq,at,actor_id,kind,payload,prev_hash,hash) \
+         VALUES ('t',1, now(),'system','auth.logout','{}'::jsonb, $1, $2)",
+    )
+    .bind(vec![0u8; 32])
+    .bind(vec![1u8; 32])
+    .execute(&store.pool).await.unwrap();
+    let n: i64 = sqlx::query_scalar("SELECT count(*) FROM audit_events WHERE tenant_id='t'")
+        .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n, 1);
+    // Composite PK rejects a duplicate seq for the same tenant.
+    let err = sqlx::query(
+        "INSERT INTO audit_events(tenant_id,seq,at,actor_id,kind,payload,prev_hash,hash) \
+         VALUES ('t',1, now(),'system','auth.logout','{}'::jsonb, $1, $2)",
+    )
+    .bind(vec![0u8; 32])
+    .bind(vec![2u8; 32])
+    .execute(&store.pool).await;
+    assert!(err.is_err(), "duplicate (tenant_id,seq) must violate the PK");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn append_audit_chains_per_tenant(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t'),('u','U','u')")
+        .execute(&store.pool).await.unwrap();
+
+    let mut tx = store.pool.begin().await.unwrap();
+    let e1 = store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "user-1".into(), ip: None }).await.unwrap();
+    let e2 = store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "user-2".into(), ip: None }).await.unwrap();
+    let f1 = store.append_audit(&mut tx, "u", "system",
+        AuditPayload::AuthLogout { user_id: "user-3".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(e1.seq, 1);
+    assert_eq!(e2.seq, 2);
+    assert_eq!(e2.prev_hash, e1.hash, "chain links inside a tenant");
+    assert_eq!(f1.seq, 1, "the other tenant has its own seq=1");
+    assert_eq!(f1.prev_hash, [0u8; 32]);
+    assert_eq!(e1.kind, AuditKind::AuthLogout);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn list_and_verify_round_trip(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let mut tx = store.pool.begin().await.unwrap();
+    for i in 0..5 {
+        store.append_audit(&mut tx, "t", "system",
+            AuditPayload::AuthLogout { user_id: format!("user-{i}"), ip: None }).await.unwrap();
+    }
+    tx.commit().await.unwrap();
+
+    let page = store.list_audit("t", &AuditFilter { limit: 100, ..Default::default() }).await.unwrap();
+    assert_eq!(page.items.len(), 5);
+    assert_eq!(page.items.first().unwrap().seq, 5, "descending");
+    assert_eq!(page.items.last().unwrap().seq, 1);
+    assert!(page.next_cursor.is_none());
+
+    let outcome = store.verify_audit("t", None, None, None).await.unwrap();
+    assert_eq!(outcome.status, VerifyStatus::Valid);
+    assert_eq!(outcome.checked, 5);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn verify_detects_payload_tamper(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let mut tx = store.pool.begin().await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u1".into(), ip: None }).await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u2".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    // Manually tamper with row seq=2.
+    sqlx::query(
+        "UPDATE audit_events SET payload = jsonb_set(payload, '{data,user_id}', '\"evil\"') \
+         WHERE tenant_id='t' AND seq=2",
+    )
+    .execute(&store.pool).await.unwrap();
+
+    let outcome = store.verify_audit("t", None, None, None).await.unwrap();
+    assert_eq!(outcome.status, VerifyStatus::Invalid);
+    assert_eq!(outcome.first_broken_seq, Some(2));
+    assert_eq!(outcome.reason, Some(recon_audit::chain::VerifyReason::Tampered));
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn anchor_now_writes_anchor_and_per_tenant_event(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t'),('u','U','u')")
+        .execute(&store.pool).await.unwrap();
+    // Seed an event per tenant so each has a head.
+    let mut tx = store.pool.begin().await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u1".into(), ip: None }).await.unwrap();
+    store.append_audit(&mut tx, "u", "system",
+        AuditPayload::AuthLogout { user_id: "u2".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let anchor = store.anchor_now().await.unwrap();
+    assert_eq!(anchor.anchor_seq, 1);
+    assert_eq!(anchor.tenant_heads.len(), 2);
+    assert!(anchor.tenant_heads.contains_key("t"));
+    assert!(anchor.tenant_heads.contains_key("u"));
+
+    // Each tenant gained a `system.anchor.created` row.
+    let n_t: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='system.anchor.created'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n_t, 1);
+    let n_u: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='u' AND kind='system.anchor.created'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n_u, 1);
+
+    // List anchors returns the row.
+    let anchors = store.list_anchors(10).await.unwrap();
+    assert_eq!(anchors.len(), 1);
+    assert_eq!(anchors[0].anchor_seq, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn assign_break_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    // Seed minimal tenant/user/membership/case/break.
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('u1','U','u@x',false),('u2','V','v@x',false)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('u1','t','operator'),('u2','t','approver')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency) VALUES ('s','t','bank','S','GBP')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO reconciliation_runs(id,tenant_id,name,source_a_id,source_b_id,status,started_at,completed_at,config_version,stats) VALUES ('r','t','R','s','s','completed', now(), now(), 'v1', '{}'::jsonb)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO cases(id,tenant_id,break_id,status) VALUES ('c','t','b','open')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO breaks(id,tenant_id,run_id,case_id,type,status,value_minor,currency,txn_ids,opened_at) VALUES ('b','t','r','c','unmatched','open',0,'GBP','{}', now())")
+        .execute(&store.pool).await.unwrap();
+
+    // Signature: assign_break(tenant_id, break_id, assignee_id, actor_id).
+    store.assign_break("t", "b", "u2", "u1").await.unwrap();
+
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='case.assigned'",
+    )
+    .fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n, 1, "case.assigned audit emitted");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_source_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')").execute(&store.pool).await.unwrap();
+    store.create_source("t", recon_domain::SourceKind::Bank, "S", "GBP", "actor").await.unwrap();
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='data.source.created'",
+    ).fetch_one(&store.pool).await.unwrap();
+    assert_eq!(n, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn admin_create_user_emits_audit(pool: sqlx::PgPool) {
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('admin','Admin','a@x',false)")
+        .execute(&store.pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('admin','t','admin')")
+        .execute(&store.pool).await.unwrap();
+    // dummy hash; not verified here
+    let hash = "$argon2id$v=19$m=19456,t=2,p=1$abc$def".to_string();
+    store
+        .create_user_with_membership(
+            "u-bob",
+            "Bob",
+            "bob@x",
+            &hash,
+            "t",
+            recon_domain::UserRole::Operator,
+            "admin",
+        )
+        .await
+        .unwrap();
+    let n: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE tenant_id='t' AND kind='admin.user.created'",
+    )
+    .fetch_one(&store.pool)
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn verify_audit_detects_wholesale_deletion_via_anchor(pool: sqlx::PgPool) {
+    // Setup: seed two audit events for tenant 't', anchor them, then DELETE
+    // the second event (simulating wholesale deletion). The chain-only verify
+    // would walk the surviving row and return `valid`; the anchor cross-check
+    // must catch that the anchored head is gone.
+    let store = Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let mut tx = store.pool.begin().await.unwrap();
+    store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u1".into(), ip: None }).await.unwrap();
+    let e2 = store.append_audit(&mut tx, "t", "system",
+        AuditPayload::AuthLogout { user_id: "u2".into(), ip: None }).await.unwrap();
+    tx.commit().await.unwrap();
+
+    // Anchor at this head (seq=2).
+    let _anchor = store.anchor_now().await.unwrap();
+
+    // After anchoring, the chain also has a `system.anchor.created` row (seq=3).
+    // For the deletion scenario, drop everything from the anchored seq forward
+    // — both the anchored row and the system.anchor.created row.
+    sqlx::query("DELETE FROM audit_events WHERE tenant_id='t' AND seq >= $1")
+        .bind(e2.seq)
+        .execute(&store.pool).await.unwrap();
+
+    let outcome = store.verify_audit("t", None, None, None).await.unwrap();
+    assert_eq!(outcome.status, VerifyStatus::Invalid);
+    // The anchor recorded seq=3 (the system.anchor.created row, now the head);
+    // either that row or seq=2 should be flagged as missing depending on which
+    // the anchor referenced. Both are deletion evidence.
+    assert!(
+        outcome.first_broken_seq.is_some(),
+        "anchor cross-check must surface the missing seq",
+    );
+    assert_eq!(
+        outcome.reason,
+        Some(recon_audit::chain::VerifyReason::Missing),
+        "wholesale deletion must report as Missing"
+    );
+}
