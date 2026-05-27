@@ -345,6 +345,8 @@ async fn ingest_source(
             direction: p.direction,
             counterparty: p.counterparty,
             description: p.description,
+            counterparty_bic: p.counterparty_bic,
+            counterparty_account: p.counterparty_account,
         })
         .collect();
 

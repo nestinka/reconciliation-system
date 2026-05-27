@@ -319,6 +319,8 @@ fn build_txn(
         direction: p.direction,
         counterparty,
         description,
+        counterparty_bic: None,
+        counterparty_account: None,
     })
 }
 

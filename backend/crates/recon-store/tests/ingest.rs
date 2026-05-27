@@ -52,6 +52,8 @@ fn txn(id: &str, eref: &str) -> CanonicalTransaction {
         direction: Direction::Debit,
         counterparty: None,
         description: "x".into(),
+        counterparty_bic: None,
+        counterparty_account: None,
     }
 }
 
@@ -115,6 +117,7 @@ async fn create_run_reconciles_and_persists(pool: sqlx::PgPool) {
         value_date: "2026-05-10".into(), posted_at: "2026-05-10T00:00:00Z".into(),
         amount_minor: amt, currency: "GBP".into(), direction: Direction::Debit,
         counterparty: None, description: "x".into(),
+        counterparty_bic: None, counterparty_account: None,
     };
     store.ingest_transactions("t", &bank.id, &[mk("txn-a1", &bank.id, "A1", 1000), mk("txn-a2", &bank.id, "A2", 9999)], "actor", "00", "csv", 0).await.unwrap();
     store.ingest_transactions("t", &ledger.id, &[mk("txn-b1", &ledger.id, "B1", 1000)], "actor", "00", "csv", 0).await.unwrap();

@@ -60,6 +60,8 @@ mod tests {
             direction: Direction::Debit,
             counterparty: None,
             description: "d".into(),
+            counterparty_bic: None,
+            counterparty_account: None,
         }
     }
     #[test]

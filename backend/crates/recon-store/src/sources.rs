@@ -173,8 +173,8 @@ impl Store {
         let mut tx = self.pool.begin().await?;
         for t in txns {
             sqlx::query(
-                "INSERT INTO canonical_transactions(id,tenant_id,source_id,external_ref,value_date,posted_at,amount_minor,currency,direction,counterparty,description) \
-                 VALUES ($1,$2,$3,$4,$5::date,$6::timestamptz,$7,$8,$9,$10,$11)",
+                "INSERT INTO canonical_transactions(id,tenant_id,source_id,external_ref,value_date,posted_at,amount_minor,currency,direction,counterparty,description,counterparty_bic,counterparty_account) \
+                 VALUES ($1,$2,$3,$4,$5::date,$6::timestamptz,$7,$8,$9,$10,$11,$12,$13)",
             )
             .bind(&t.id)
             .bind(tenant_id)
@@ -187,6 +187,8 @@ impl Store {
             .bind(direction_str(t.direction))
             .bind(&t.counterparty)
             .bind(&t.description)
+            .bind(&t.counterparty_bic)
+            .bind(&t.counterparty_account)
             .execute(&mut *tx)
             .await
             .map_err(|e| match e {
