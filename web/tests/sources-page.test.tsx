@@ -136,6 +136,30 @@ describe("New source dialog — MT940 dialect", () => {
   });
 });
 
+describe("Sources table — Edit button", () => {
+  it("renders an Edit button on each row", async () => {
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderSourcesPage(client);
+
+    // Wait for rows to load; the fixture has at least one source for tenant-acme.
+    const editButtons = await screen.findAllByRole("button", { name: /^edit$/i });
+    expect(editButtons.length).toBeGreaterThan(0);
+  });
+
+  it("clicking Edit opens the EditSourceDialog", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderSourcesPage(client);
+
+    const editButtons = await screen.findAllByRole("button", { name: /^edit$/i });
+    await user.click(editButtons[0]);
+
+    expect(
+      await screen.findByRole("heading", { name: /edit source/i }),
+    ).toBeVisible();
+  });
+});
+
 describe("Sources table — dialect badge", () => {
   it("renders the MT940 dialect badge for sources with formatDialect set", async () => {
     const user = userEvent.setup();

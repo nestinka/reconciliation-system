@@ -38,6 +38,7 @@ import { useApi } from "@/lib/api/provider";
 import { useTenant } from "@/lib/providers/tenant-provider";
 import { useSources } from "@/lib/hooks/use-sources";
 import { UploadDialog } from "@/components/app/upload-dialog";
+import { EditSourceDialog } from "@/components/app/edit-source-dialog";
 import type { SourceListItem, FormatDialect } from "@/lib/api/client";
 import type { SourceKind } from "@/lib/domain/types";
 
@@ -69,6 +70,7 @@ export default function SourcesPage() {
   const { data: sources, isLoading } = useSources();
   const [showNew, setShowNew] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<SourceListItem | null>(null);
+  const [editTarget, setEditTarget] = useState<SourceListItem | null>(null);
 
   const createMutation = useMutation({
     mutationFn: (input: FormValues) => api.createSource(tenantId, input),
@@ -160,6 +162,14 @@ export default function SourcesPage() {
                       {s.txnCount}
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 mr-1.5"
+                        onClick={() => setEditTarget(s)}
+                      >
+                        Edit
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -293,6 +303,14 @@ export default function SourcesPage() {
           source={uploadTarget}
           open={!!uploadTarget}
           onOpenChange={(o: boolean) => !o && setUploadTarget(null)}
+        />
+      )}
+
+      {editTarget && (
+        <EditSourceDialog
+          source={editTarget}
+          open={!!editTarget}
+          onOpenChange={(o) => !o && setEditTarget(null)}
         />
       )}
     </>
