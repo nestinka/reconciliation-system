@@ -145,14 +145,15 @@ export function UploadDialog({
                 <SelectItem value="csv">CSV (with column mapping)</SelectItem>
                 <SelectItem value="camt053">CAMT.053 (ISO 20022 XML)</SelectItem>
                 <SelectItem value="mt940">MT940 (SWIFT statement)</SelectItem>
+                <SelectItem value="mt942">MT942 (intra-day)</SelectItem>
                 <SelectItem value="bai2">BAI v2 (US bank file)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {format === "mt940" && !source.formatDialect && (
+          {(format === "mt940" || format === "mt942") && !source.formatDialect && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
-              This source has no MT940 dialect set. Using{" "}
+              This source has no MT940/MT942 dialect set. Using{" "}
               <strong>Generic</strong>. Edit the source to choose a dialect.
             </p>
           )}
@@ -330,6 +331,8 @@ function fileAccept(format: IngestFormat): string {
       return ".xml,text/xml,application/xml";
     case "mt940":
       return ".mt940,.sta,.txt,text/plain";
+    case "mt942":
+      return ".mt942,.sta,.txt,text/plain";
     case "bai2":
       return ".bai,.bai2,.txt,text/plain";
   }

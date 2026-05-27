@@ -91,7 +91,7 @@ export interface UpdateSourceInput {
   // null = clear; undefined = don't change; string = set.
   formatDialect?: FormatDialect | null;
 }
-export type IngestFormat = "csv" | "camt053" | "mt940" | "bai2";
+export type IngestFormat = "csv" | "camt053" | "mt940" | "mt942" | "bai2";
 export interface IngestResult { ingested: number; sourceId: string }
 export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
 

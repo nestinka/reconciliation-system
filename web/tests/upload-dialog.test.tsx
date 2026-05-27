@@ -225,7 +225,33 @@ describe("UploadDialog", () => {
     await user.click(await screen.findByRole("option", { name: /MT940/i }));
 
     expect(
-      screen.getByText(/no MT940 dialect set/i)
+      screen.getByText(/MT940\/MT942 dialect/i)
     ).toBeInTheDocument();
+  });
+
+  it("offers MT942 as the fifth format option", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderDialog(client);
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+    expect(screen.getByText(/MT942 \(intra-day\)/i)).toBeInTheDocument();
+  });
+
+  it("hides CSV mapping fields when MT942 is selected", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderDialog(client);
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+    await user.click(await screen.findByRole("option", { name: /MT942/i }));
+    expect(screen.queryByLabelText(/reference col|amount col/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the amber dialect-missing notice for MT942 when source has no dialect", async () => {
+    const user = userEvent.setup();
+    const client = new MockApiClient({ latencyMs: 0 });
+    renderDialog(client);
+    await user.click(screen.getByRole("combobox", { name: /format/i }));
+    await user.click(await screen.findByRole("option", { name: /MT942/i }));
+    expect(screen.getByText(/MT940\/MT942 dialect|dialect/i)).toBeInTheDocument();
   });
 });
