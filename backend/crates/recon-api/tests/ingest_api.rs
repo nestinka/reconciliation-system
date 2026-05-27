@@ -356,3 +356,78 @@ async fn cross_tenant_ingest_is_not_found(pool: sqlx::PgPool) {
     let (st, _) = json(&app, req).await;
     assert_eq!(st, StatusCode::NOT_FOUND);
 }
+
+const MT942_FIXTURE: &[u8] = b":20:INTRA-DAY-1
+:25:DE89370400440532013000
+:28C:1/1
+:34F:EUR0,00
+:13D:2601011200+0100
+:61:260101D250,00NTRFCUSTREF-A//BNKREF-1
+:86:Intra-day debit one
+:61:260101C500,00NTRFCUSTREF-B//BNKREF-2
+:86:Intra-day credit one
+:90D:1EUR250,00
+:90C:1EUR500,00
+";
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn mt942_happy_path_ingest(pool: sqlx::PgPool) {
+    recon_store::Store::from_pool(pool.clone())
+        .seed()
+        .await
+        .unwrap();
+    let (app, _cfg) = recon_api::test_app(pool.clone());
+    let token = login_as(&app, "ada@acme.test", "Password123!").await;
+
+    let body = serde_json::json!({
+        "kind": "bank", "name": "MT942 Test", "currency": "EUR", "formatDialect": null
+    });
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/sources")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let src: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    let boundary = "----recon-test";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\nmt942\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"intraday.sta\"\r\nContent-Type: application/octet-stream\r\n\r\n{}\r\n--{boundary}--\r\n",
+        std::str::from_utf8(MT942_FIXTURE).unwrap()
+    );
+
+    let res = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/sources/{src_id}/ingest"))
+                .header("authorization", format!("Bearer {token}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["ingested"], 2);
+}

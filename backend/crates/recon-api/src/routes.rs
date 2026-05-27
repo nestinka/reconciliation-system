@@ -310,6 +310,13 @@ async fn ingest_source(
             };
             recon_ingest::mt940::Mt940Parser { dialect }.parse(&bytes)
         }
+        "mt942" => {
+            let dialect = match source.format_dialect.as_deref() {
+                Some("subfielded") => recon_ingest::mt94x_shared::Mt94xDialect::Subfielded,
+                _ => recon_ingest::mt94x_shared::Mt94xDialect::Generic,
+            };
+            recon_ingest::mt942::Mt942Parser { dialect }.parse(&bytes)
+        }
         "bai2" => recon_ingest::bai2::Bai2Parser.parse(&bytes),
         _ => return Err(ApiError::BadRequest()),
     };
