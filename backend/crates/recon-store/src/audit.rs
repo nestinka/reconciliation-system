@@ -6,10 +6,26 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 impl Store {
+    /// Append an audit event in its own transaction. Convenience for callers
+    /// outside the larger same-tx idiom (tests, out-of-band emitters). Opens a
+    /// fresh transaction, delegates to `append_audit`, and commits; the caller
+    /// does not need to manage transaction lifetime.
+    pub async fn append_audit_standalone(
+        &self,
+        tenant_id: &str,
+        actor_id: &str,
+        payload: AuditPayload,
+    ) -> Result<AuditEntry, StoreError> {
+        let mut tx = self.pool.begin().await?;
+        let entry = self.append_audit(&mut tx, tenant_id, actor_id, payload).await?;
+        tx.commit().await?;
+        Ok(entry)
+    }
+
     /// Append an audit event to a tenant's chain INSIDE the caller's transaction.
-    /// Fetches the current tail row with `FOR UPDATE`, computes the next hash,
-    /// and inserts. If the caller's transaction rolls back (for any reason),
-    /// the audit row rolls back with it.
+    /// Acquires a per-tenant advisory lock, fetches the tail, computes the next
+    /// hash, and inserts. If the caller's transaction rolls back, the audit row
+    /// rolls back with it.
     pub async fn append_audit(
         &self,
         tx: &mut sqlx::PgConnection,
@@ -17,9 +33,21 @@ impl Store {
         actor_id: &str,
         payload: AuditPayload,
     ) -> Result<AuditEntry, StoreError> {
-        // 1. Lock the tail (or genesis).
+        // 1. Lock the tenant's audit chain for the duration of this transaction.
+        //
+        // `FOR UPDATE` on a row-level lock works once the first row exists, but
+        // two concurrent genesis appenders both see an empty table and each
+        // computes seq=1 — causing a 23505 PK violation on commit. A session-
+        // level advisory lock keyed on hashtext(tenant_id) closes that gap: it
+        // serializes even the genesis case without requiring a sentinel row.
+        // The lock is automatically released when the transaction ends.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+            .bind(tenant_id)
+            .execute(&mut *tx)
+            .await?;
+
         let row: Option<(i64, Vec<u8>)> = sqlx::query_as(
-            "SELECT seq, hash FROM audit_events WHERE tenant_id=$1 ORDER BY seq DESC LIMIT 1 FOR UPDATE",
+            "SELECT seq, hash FROM audit_events WHERE tenant_id=$1 ORDER BY seq DESC LIMIT 1",
         )
         .bind(tenant_id)
         .fetch_optional(&mut *tx)
