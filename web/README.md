@@ -71,14 +71,14 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
 
 1. Sign in (any role can ingest).
 2. Go to **Sources** → **New source** (give it a name, kind, currency, and — if
-   the source will receive MT940 statements — pick the dialect: **Generic** for
-   plain MT940, **Subfielded (DE/NL/BE)** for Deutsche Bank, ING, ABN AMRO,
+   the source will receive MT940 / MT942 statements — pick the dialect: **Generic**
+   for plain MT94x, **Subfielded (DE/NL/BE)** for Deutsche Bank, ING, ABN AMRO,
    Rabobank, and most other European banks. Leave **Not applicable** for any
    other format).
 3. Click **Upload** on the source row, choose **CSV**, **CAMT.053**, **MT940**,
-   or **BAI v2**, pick a file, and (for CSV only) map the columns by 0-based
-   index + choose how amounts are encoded (single signed column, or separate
-   debit/credit columns). Bad rows reject the whole file with a per-row
+   **MT942**, or **BAI v2**, pick a file, and (for CSV only) map the columns by
+   0-based index + choose how amounts are encoded (single signed column, or
+   separate debit/credit columns). Bad rows reject the whole file with a per-row
    report; re-uploading an already-loaded statement is rejected as a duplicate.
 4. Create a second source and upload its file.
 5. Go to **Runs** → **New run**, pick the two sources + a date window, and
@@ -90,10 +90,38 @@ Supported formats:
 | --- | --- |
 | CSV | Per-upload column mapping; signed or debit/credit amount encodings |
 | CAMT.053 | ISO 20022 XML; entity-expansion safe |
-| MT940 | SWIFT statement; Generic or Subfielded dialect (per-source); multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
+| MT940 | SWIFT customer statement; Generic or Subfielded dialect (per-source); Subfielded `?32` → counterparty account, `?33` → counterparty BIC; multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
+| MT942 | SWIFT intra-day report; same dialects as MT940; `:34F:` floor-limit and `:13D:` date/time tags parsed and discarded; declared `:90D:` / `:90C:` totals are sanity-checked against parsed counts + sums (mismatch rejects the file) |
 | BAI v2 | US-bank cash-management format; built-in type-code → debit/credit mapping; `88` continuation records merge into the preceding `16` |
 
-The sources table shows an `MT940 · <dialect>` badge for sources with a dialect set.
+The sources table shows an `MT940 · <dialect>` badge for sources with a dialect set (the dialect applies to both MT940 and MT942 uploads from the source).
+
+### Editing a source
+
+Anyone with **ManageData** permission (Operator/Approver/Admin) can rename a
+source and change its MT940 / MT942 dialect via the **Edit** button on each row
+of the sources table. Other fields (`kind`, `default currency`) are immutable;
+to change them, create a new source. The update emits a `source.updated` audit
+row inside the same DB transaction as the UPDATE, with the before/after diff in
+the payload.
+
+### Counterparty fields
+
+For sources whose format carries structured counterparty data, the canonical
+transaction now exposes two optional fields:
+
+- `counterpartyBic` — ISO 9362 BIC (8 or 11 uppercase alphanumeric)
+- `counterpartyAccount` — account identifier (typically an IBAN, but free-form
+  text so US ABA/account numbers also fit)
+
+Population by format:
+
+| Format | Counterparty extraction |
+| --- | --- |
+| CSV | Optional `counterpartyBic` / `counterpartyAccount` column references in the mapping |
+| CAMT.053 | Pulled from `<RltdPties>/<CdtrAcct\|DbtrAcct>/<Id>/<IBAN\|Othr/Id>` and `<RltdAgts>/<CdtrAgt\|DbtrAgt>/<FinInstnId>/<BIC\|BICFI>`; the side opposite the entry's direction is preferred, falling back to the other side if absent |
+| MT940 (Subfielded) | `?32` → counterparty account; `?33` → counterparty BIC |
+| MT940 (Generic), MT942 (Generic), BAI v2 | Not extracted |
 
 ### Compliance audit log
 
