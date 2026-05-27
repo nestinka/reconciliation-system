@@ -268,7 +268,7 @@ async fn mt940_happy_path_ingest(pool: sqlx::PgPool) {
 const BAI2_FIXTURE: &[u8] = b"01,SENDR,RCVR,250601,0930,12345,80,2,2/
 02,ACME,SENDR,1,250601,0930,USD,2/
 03,123456789,USD,010,500000,,,015,500000,,/
-16,175,25000,V,CUSTREF-1,BNKREF-A,Deposit from customer/
+16,175,25000,V,BNKREF-A,CUSTREF-1,Deposit from customer/
 49,25000,2/
 98,25000,1,3/
 99,25000,1,5/
