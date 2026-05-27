@@ -50,6 +50,8 @@ export const canonicalTransactionSchema = z.object({
   direction: directionSchema,
   counterparty: z.string().optional(),
   description: z.string(),
+  counterpartyBic: z.string().nullable().optional(),
+  counterpartyAccount: z.string().nullable().optional(),
 });
 export type CanonicalTransaction = z.infer<typeof canonicalTransactionSchema>;
 

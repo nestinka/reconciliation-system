@@ -385,6 +385,14 @@ function CaseDetailView({
                         </span>
                         <span>{formatDate(txn.valueDate)}</span>
                         {txn.counterparty && <span>{txn.counterparty}</span>}
+                        {txn.counterpartyBic && (
+                          <span className="font-mono text-[10px]">{txn.counterpartyBic}</span>
+                        )}
+                        {txn.counterpartyAccount && (
+                          <span className="font-mono text-[10px] truncate max-w-[14ch]" title={txn.counterpartyAccount}>
+                            {txn.counterpartyAccount}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground truncate">
                         {txn.description}

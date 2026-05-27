@@ -213,4 +213,16 @@ describe("CaseDetailPage", () => {
       screen.queryByRole("heading", { name: /investigate/i })
     ).not.toBeInTheDocument();
   });
+
+  it("displays counterpartyBic and counterpartyAccount when present on a transaction", async () => {
+    // case-pending → break-pending → txn-brk001 which has counterpartyBic: "CHASGB2L"
+    // and counterpartyAccount: "GB29NWBK60161331926819"
+    renderWithProviders(<CaseDetailPage />, {
+      tenantId: "tenant-acme",
+    });
+    await waitFor(() => {
+      expect(screen.getByText("CHASGB2L")).toBeInTheDocument();
+      expect(screen.getByText("GB29NWBK60161331926819")).toBeInTheDocument();
+    });
+  });
 });
