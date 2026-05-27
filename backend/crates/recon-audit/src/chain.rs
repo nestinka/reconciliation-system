@@ -262,7 +262,7 @@ mod tests {
         let e1 = mk(1, [0u8; 32], AuditPayload::AuthLogout { user_id: "u".into(), ip: None });
         let e2 = mk(2, e1.hash, AuditPayload::AuthLogout { user_id: "u".into(), ip: None });
         // Verify just e2 with expected_prev_hash = e1.hash.
-        assert!(verify(&[e2.clone()], Some(e1.hash)).is_ok());
+        assert!(verify(std::slice::from_ref(&e2), Some(e1.hash)).is_ok());
         // Wrong expected_prev fails.
         let err = verify(&[e2], Some([7u8; 32])).unwrap_err();
         assert_eq!(err.reason, VerifyReason::WrongGenesis);
