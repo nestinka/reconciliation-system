@@ -35,7 +35,6 @@ proptest! {
     /// Tampering with a single byte of any entry's payload always breaks verify.
     #[test]
     fn tampering_breaks_verify(n in 2usize..20, tamper_at in 0usize..20) {
-        let n = n; // moved
         let mut entries = Vec::with_capacity(n);
         let mut prev = [0u8; 32];
         for i in 0..n {
