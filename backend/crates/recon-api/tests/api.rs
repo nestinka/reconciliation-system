@@ -385,3 +385,155 @@ async fn assign_break_sets_assignee(pool: sqlx::PgPool) {
     assert_eq!(v["assigneeId"], "user-mia");
     assert_eq!(v["status"], "investigating");
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// PATCH /api/sources/:id  (T8)
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn create_source_for_patch(
+    app: &axum::Router,
+    auth: &str,
+    name: &str,
+    dialect: Option<&str>,
+) -> String {
+    let body = serde_json::json!({
+        "kind": "bank", "name": name, "currency": "EUR", "formatDialect": dialect,
+    });
+    let res = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("POST")
+                .uri("/api/sources")
+                .header("authorization", auth)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), axum::http::StatusCode::OK);
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let src: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    src["id"].as_str().unwrap().to_string()
+}
+
+async fn patch_source_req(
+    app: &axum::Router,
+    auth: &str,
+    source_id: &str,
+    body: serde_json::Value,
+) -> (axum::http::StatusCode, serde_json::Value) {
+    let res = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("PATCH")
+                .uri(format!("/api/sources/{source_id}"))
+                .header("authorization", auth)
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = res.status();
+    let bytes = res.into_body().collect().await.unwrap().to_bytes();
+    let v = if bytes.is_empty() {
+        serde_json::Value::Null
+    } else {
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
+    };
+    (status, v)
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_source_rename_and_set_dialect(pool: sqlx::PgPool) {
+    let (app, _) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let id = create_source_for_patch(&app, &auth, "Bank A", None).await;
+    let (status, body) = patch_source_req(
+        &app,
+        &auth,
+        &id,
+        serde_json::json!({"name": "Bank A renamed", "formatDialect": "subfielded"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["name"], "Bank A renamed");
+    assert_eq!(body["formatDialect"], "subfielded");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_source_clear_dialect_with_null(pool: sqlx::PgPool) {
+    let (app, _) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let id = create_source_for_patch(&app, &auth, "Bank A", Some("subfielded")).await;
+    let (status, body) = patch_source_req(
+        &app,
+        &auth,
+        &id,
+        serde_json::json!({"formatDialect": null}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["formatDialect"].is_null());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_source_invalid_dialect_400(pool: sqlx::PgPool) {
+    let (app, _) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let id = create_source_for_patch(&app, &auth, "Bank A", None).await;
+    let (status, _) = patch_source_req(
+        &app,
+        &auth,
+        &id,
+        serde_json::json!({"formatDialect": "bogus"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_source_unauthenticated_401(pool: sqlx::PgPool) {
+    // ManageData is open to all authenticated roles; a missing token → 401.
+    let (app, _) = seeded_app(pool).await;
+    let res = app
+        .clone()
+        .oneshot(
+            axum::http::Request::builder()
+                .method("PATCH")
+                .uri("/api/sources/src-anything")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::json!({"name": "X"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn patch_source_cross_tenant_404(pool: sqlx::PgPool) {
+    let (app, _) = seeded_app(pool).await;
+    let (st, tok) = login_as(&app, "ada@acme.test", "Password123!").await;
+    assert_eq!(st, StatusCode::OK);
+    let auth = format!("Bearer {}", tok.expect("access token"));
+    let (status, _) = patch_source_req(
+        &app,
+        &auth,
+        "src-nonexistent",
+        serde_json::json!({"name": "X"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

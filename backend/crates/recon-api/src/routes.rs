@@ -39,6 +39,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dashboard", get(dashboard))
         .route("/api/sources", get(list_sources).post(create_source))
         .route(
+            "/api/sources/:source_id",
+            axum::routing::patch(patch_source),
+        )
+        .route(
             "/api/sources/:source_id/ingest",
             post(ingest_source).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
@@ -231,6 +235,42 @@ async fn create_source(
         .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, dialect)
         .await?;
     Ok(Json(json!(src)))
+}
+
+async fn patch_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+    Json(body): Json<UpdateSourceReq>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    // Validate name if present.
+    if let Some(ref name) = body.name {
+        let trimmed = name.trim();
+        if trimmed.is_empty() || trimmed.chars().count() > 80 {
+            return Err(ApiError::BadRequest());
+        }
+    }
+    // Validate format_dialect if present.
+    let dialect_patch: Option<Option<&str>> = match body.format_dialect {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(ref s)) => match s.as_str() {
+            "generic" | "subfielded" => Some(Some(s.as_str())),
+            _ => return Err(ApiError::BadRequest()),
+        },
+    };
+    let updated = s
+        .store
+        .update_source(
+            &ctx.tenant_id,
+            &source_id,
+            &ctx.user_id,
+            body.name.as_deref().map(str::trim),
+            dialect_patch,
+        )
+        .await?;
+    Ok(Json(json!(updated)))
 }
 
 // --- validation helpers ---

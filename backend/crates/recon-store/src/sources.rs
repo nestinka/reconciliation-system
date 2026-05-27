@@ -64,6 +64,60 @@ impl Store {
         })
     }
 
+    /// Apply a partial update to a source. Audited as `source.updated` inside the
+    /// same transaction as the UPDATE. Returns the updated source.
+    pub async fn update_source(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        actor_id: &str,
+        new_name: Option<&str>,
+        // None = field absent; Some(None) = clear; Some(Some(v)) = set to v.
+        new_format_dialect: Option<Option<&str>>,
+    ) -> Result<Source, StoreError> {
+        let before = self.get_source(tenant_id, source_id).await?;
+
+        let mut tx = self.pool.begin().await?;
+
+        let after_name = new_name.unwrap_or(&before.name).to_string();
+        let after_dialect: Option<String> = match new_format_dialect {
+            None => before.format_dialect.clone(),
+            Some(v) => v.map(|s| s.to_string()),
+        };
+
+        sqlx::query("UPDATE sources SET name=$1, format_dialect=$2 WHERE id=$3 AND tenant_id=$4")
+            .bind(&after_name)
+            .bind(&after_dialect)
+            .bind(source_id)
+            .bind(tenant_id)
+            .execute(&mut *tx)
+            .await?;
+
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::SourceUpdated {
+                source_id: source_id.to_string(),
+                before_name: before.name.clone(),
+                after_name: after_name.clone(),
+                before_format_dialect: before.format_dialect.clone(),
+                after_format_dialect: after_dialect.clone(),
+            },
+        )
+        .await?;
+        tx.commit().await?;
+
+        Ok(Source {
+            id: source_id.to_string(),
+            tenant_id: tenant_id.to_string(),
+            kind: before.kind,
+            name: after_name,
+            currency: before.currency,
+            format_dialect: after_dialect,
+        })
+    }
+
     pub async fn get_source(&self, tenant_id: &str, id: &str) -> Result<Source, StoreError> {
         let row: Option<SourceRow> =
             sqlx::query_as("SELECT id,tenant_id,kind,name,currency,format_dialect FROM sources WHERE id=$1 AND tenant_id=$2")
