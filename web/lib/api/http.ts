@@ -1,5 +1,5 @@
 import type {
-  ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch, SourceListItem, CreateSourceInput, IngestFormat, IngestResult, CreateRunInput, CsvMapping,
+  ApiClient, BreakQuery, CreateUserInput, DashboardSummary, MatchSuggestion, NewCaseEvent, RunDetail, RunQuery, UpdateUserPatch, SourceListItem, CreateSourceInput, UpdateSourceInput, IngestFormat, IngestResult, CreateRunInput, CsvMapping,
   Anchor, AuditPage, AuditQuery, Control, VerifyRequest, VerifyResult,
 } from "./client";
 import { IngestError } from "./client";
@@ -88,6 +88,12 @@ export class HttpApiClient implements ApiClient {
   listSources(tenantId: string): Promise<SourceListItem[]> { return this.req("/api/sources", tenantId); }
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
     return this.req("/api/sources", tenantId, { method: "POST", body: JSON.stringify(input) });
+  }
+  updateSource(tenantId: string, sourceId: string, patch: UpdateSourceInput): Promise<Source> {
+    const body: Record<string, unknown> = {};
+    if (patch.name !== undefined) body.name = patch.name;
+    if (patch.formatDialect !== undefined) body.formatDialect = patch.formatDialect;
+    return this.req(`/api/sources/${sourceId}`, tenantId, { method: "PATCH", body: JSON.stringify(body) });
   }
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun> {
     return this.req("/api/runs", tenantId, { method: "POST", body: JSON.stringify(input) });

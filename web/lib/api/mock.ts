@@ -20,6 +20,7 @@ import type {
   RunDetail,
   RunQuery,
   SourceListItem,
+  UpdateSourceInput,
   UpdateUserPatch,
   VerifyRequest,
   VerifyResult,
@@ -450,6 +451,30 @@ export class MockApiClient implements ApiClient {
     };
     this.state.sources.push(deepClone(src));
     return src;
+  }
+
+  async updateSource(
+    tenantId: string,
+    sourceId: string,
+    patch: UpdateSourceInput,
+  ): Promise<Source> {
+    await this.delay();
+    const idx = this.state.sources.findIndex(
+      (s) => s.id === sourceId && s.tenantId === tenantId,
+    );
+    if (idx === -1) {
+      throw new Error(`Source "${sourceId}" not found for tenant "${tenantId}".`);
+    }
+    const existing = this.state.sources[idx];
+    const updated: Source = {
+      ...existing,
+      name: patch.name !== undefined ? patch.name : existing.name,
+      formatDialect: patch.formatDialect === undefined
+        ? existing.formatDialect
+        : patch.formatDialect,
+    };
+    this.state.sources[idx] = updated;
+    return deepClone(updated);
   }
 
   async ingestFile(

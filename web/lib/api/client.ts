@@ -85,6 +85,12 @@ export interface CreateSourceInput {
   // it null.
   formatDialect?: FormatDialect | null;
 }
+
+export interface UpdateSourceInput {
+  name?: string;
+  // null = clear; undefined = don't change; string = set.
+  formatDialect?: FormatDialect | null;
+}
 export type IngestFormat = "csv" | "camt053" | "mt940" | "bai2";
 export interface IngestResult { ingested: number; sourceId: string }
 export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
@@ -202,6 +208,11 @@ export interface ApiClient {
   ): Promise<Case>;
   listSources(tenantId: string): Promise<SourceListItem[]>;
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source>;
+  updateSource(
+    tenantId: string,
+    sourceId: string,
+    patch: UpdateSourceInput,
+  ): Promise<Source>;
   ingestFile(tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult>;
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun>;
   listAudit(tenantId: string, q?: AuditQuery): Promise<AuditPage>;
