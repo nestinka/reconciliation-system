@@ -114,6 +114,8 @@ export function buildFixtures(): Fixtures {
       direction: "debit",
       counterparty: "Barclays",
       description: "Wire transfer out",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-a002",
@@ -127,6 +129,8 @@ export function buildFixtures(): Fixtures {
       direction: "credit",
       counterparty: "HSBC",
       description: "Incoming payment",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-a003",
@@ -140,6 +144,8 @@ export function buildFixtures(): Fixtures {
       direction: "debit",
       counterparty: "Lloyds",
       description: "FX settlement",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-a004",
@@ -153,6 +159,8 @@ export function buildFixtures(): Fixtures {
       direction: "credit",
       counterparty: "NatWest",
       description: "Client receipt",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-a005",
@@ -166,6 +174,8 @@ export function buildFixtures(): Fixtures {
       direction: "debit",
       counterparty: "Deutsche Bank",
       description: "Bond purchase",
+      counterpartyBic: "DEUTDEFF",
+      counterpartyAccount: "DE89370400440532013000",
     },
     // Acme ledger transactions
     {
@@ -179,6 +189,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Wire transfer posting",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b002",
@@ -191,6 +203,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Payment receipt posting",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b003",
@@ -203,6 +217,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "FX settlement posting",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b004",
@@ -215,6 +231,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Client receipt posting",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b005",
@@ -227,6 +245,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Bond purchase posting (partial)",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b006",
@@ -239,6 +259,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Dividend receipt",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b007",
@@ -251,6 +273,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Fee payment",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-b008",
@@ -263,6 +287,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Unreconciled credit",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-c001",
@@ -275,6 +301,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Cross-system transfer A",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-c002",
@@ -287,6 +315,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Cross-system transfer B",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-c003",
@@ -299,6 +329,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "credit",
       description: "Cross-system receipt",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-c004",
@@ -311,6 +343,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Duplicate suspected A",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-c005",
@@ -323,6 +357,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Duplicate suspected B",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     // Unmatched/break transactions (for break-pending etc.)
     {
@@ -337,6 +373,8 @@ export function buildFixtures(): Fixtures {
       direction: "debit",
       counterparty: "Unknown Counterparty",
       description: "Pending investigation write-off candidate",
+      counterpartyBic: "CHASGB2L",
+      counterpartyAccount: "GB29NWBK60161331926819",
     },
     {
       id: "txn-brk002",
@@ -349,6 +387,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Unmatched credit",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-brk003",
@@ -361,6 +401,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Partial match ledger side",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-brk004",
@@ -373,6 +415,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Partial match bank side",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-brk005",
@@ -385,6 +429,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "debit",
       description: "Break type break",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-brk006",
@@ -397,6 +443,8 @@ export function buildFixtures(): Fixtures {
       currency: "GBP",
       direction: "credit",
       description: "Open break transaction",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-brk007",
@@ -409,6 +457,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Cross-system break",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     // Globex transactions
     {
@@ -423,6 +473,8 @@ export function buildFixtures(): Fixtures {
       direction: "debit",
       counterparty: "JPMorgan",
       description: "Globex wire out",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-g002",
@@ -435,6 +487,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Globex GL wire posting",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-g003",
@@ -447,6 +501,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "credit",
       description: "Globex client receipt",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-g004",
@@ -459,6 +515,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "credit",
       description: "Globex GL client receipt",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
     {
       id: "txn-g005",
@@ -471,6 +529,8 @@ export function buildFixtures(): Fixtures {
       currency: "USD",
       direction: "debit",
       description: "Globex unmatched item",
+      counterpartyBic: null,
+      counterpartyAccount: null,
     },
   ];
 
