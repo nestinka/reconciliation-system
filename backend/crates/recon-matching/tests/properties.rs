@@ -23,6 +23,8 @@ fn arb_txns(prefix: &'static str) -> impl Strategy<Value = Vec<CanonicalTransact
                     },
                     counterparty: None,
                     description: "d".into(),
+                    counterparty_bic: None,
+                    counterparty_account: None,
                 })
                 .collect()
         },

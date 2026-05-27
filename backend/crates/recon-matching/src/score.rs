@@ -56,6 +56,8 @@ mod tests {
             direction: dir,
             counterparty: None,
             description: "d".into(),
+            counterparty_bic: None,
+            counterparty_account: None,
         }
     }
 
@@ -75,6 +77,8 @@ mod tests {
             direction: Direction::Debit,
             counterparty: None,
             description: "d".into(),
+            counterparty_bic: None,
+            counterparty_account: None,
         };
         let b = CanonicalTransaction {
             id: "b".into(),
@@ -88,6 +92,8 @@ mod tests {
             direction: Direction::Debit,
             counterparty: None,
             description: "d".into(),
+            counterparty_bic: None,
+            counterparty_account: None,
         };
         assert!((score_pair(&a, &b) - 1.0).abs() < 1e-9);
     }

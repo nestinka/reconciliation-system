@@ -206,6 +206,8 @@ fn finalize(acc: EntryAccum, idx: usize) -> Result<ParsedTxn, Vec<RowError>> {
         direction: direction.unwrap(),
         counterparty: None,
         description: acc.ustrd.or(acc.addtl).unwrap_or_default(),
+        counterparty_bic: None,
+        counterparty_account: None,
     })
 }
 

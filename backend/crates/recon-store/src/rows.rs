@@ -137,6 +137,8 @@ pub struct TxnRow {
     pub direction: String,
     pub counterparty: Option<String>,
     pub description: String,
+    pub counterparty_bic: Option<String>,
+    pub counterparty_account: Option<String>,
 }
 impl From<TxnRow> for CanonicalTransaction {
     fn from(r: TxnRow) -> Self {
@@ -152,6 +154,8 @@ impl From<TxnRow> for CanonicalTransaction {
             direction: parse_direction(&r.direction),
             counterparty: r.counterparty,
             description: r.description,
+            counterparty_bic: r.counterparty_bic,
+            counterparty_account: r.counterparty_account,
         }
     }
 }

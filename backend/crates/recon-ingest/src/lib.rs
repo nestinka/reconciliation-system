@@ -18,6 +18,8 @@ pub struct ParsedTxn {
     pub direction: Direction,
     pub counterparty: Option<String>,
     pub description: String,
+    pub counterparty_bic: Option<String>,
+    pub counterparty_account: Option<String>,
 }
 
 /// One row-level parse failure. Collected so a whole file is rejected atomically.

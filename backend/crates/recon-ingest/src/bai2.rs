@@ -187,6 +187,8 @@ fn parse_16(
         direction,
         counterparty: None,
         description: text,
+        counterparty_bic: None,
+        counterparty_account: None,
     })
 }
 

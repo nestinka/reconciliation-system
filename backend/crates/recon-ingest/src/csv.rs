@@ -180,6 +180,8 @@ impl CsvParser {
             direction: direction.unwrap(),
             counterparty,
             description: description.unwrap(),
+            counterparty_bic: None,
+            counterparty_account: None,
         })
     }
 

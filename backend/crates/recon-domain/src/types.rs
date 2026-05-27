@@ -123,6 +123,10 @@ pub struct CanonicalTransaction {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub counterparty: Option<String>,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counterparty_bic: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub counterparty_account: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -236,5 +240,27 @@ mod tests {
         assert_eq!(j["tenantId"], "t1");
         assert_eq!(j["tenantName"], "Acme");
         assert_eq!(j["role"], "admin");
+    }
+
+    #[test]
+    fn canonical_transaction_has_optional_counterparty_bic_and_account() {
+        let t = CanonicalTransaction {
+            id: "txn-x".into(),
+            tenant_id: "t".into(),
+            source_id: "s".into(),
+            external_ref: "r".into(),
+            value_date: "2026-01-01".into(),
+            posted_at: "2026-01-01T00:00:00Z".into(),
+            amount_minor: 100,
+            currency: "EUR".into(),
+            direction: Direction::Credit,
+            counterparty: None,
+            description: "".into(),
+            counterparty_bic: Some("DEUTDEFF".into()),
+            counterparty_account: Some("DE89370400440532013000".into()),
+        };
+        let v = serde_json::to_value(&t).unwrap();
+        assert_eq!(v["counterpartyBic"], "DEUTDEFF");
+        assert_eq!(v["counterpartyAccount"], "DE89370400440532013000");
     }
 }
