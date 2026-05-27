@@ -33,6 +33,10 @@ pub struct CsvMapping {
     pub currency: Option<ColRef>,
     #[serde(default)]
     pub counterparty: Option<ColRef>,
+    #[serde(default)]
+    pub counterparty_bic: Option<ColRef>,
+    #[serde(default)]
+    pub counterparty_account: Option<ColRef>,
 }
 
 pub struct CsvParser {
@@ -161,6 +165,35 @@ impl CsvParser {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
+        let counterparty_bic = match &self.mapping.counterparty_bic {
+            None => None,
+            Some(c) => {
+                let raw = match self.get(record, headers, c) {
+                    Ok(v) => v,
+                    Err(m) => {
+                        errs.push(RowError::new(row, "counterparty_bic", m));
+                        ""
+                    }
+                };
+                let cleaned = raw.trim().to_uppercase();
+                if cleaned.is_empty() { None } else { Some(cleaned) }
+            }
+        };
+        let counterparty_account = match &self.mapping.counterparty_account {
+            None => None,
+            Some(c) => {
+                let raw = match self.get(record, headers, c) {
+                    Ok(v) => v,
+                    Err(m) => {
+                        errs.push(RowError::new(row, "counterparty_account", m));
+                        ""
+                    }
+                };
+                let cleaned = raw.trim().to_string();
+                if cleaned.is_empty() { None } else { Some(cleaned) }
+            }
+        };
+
         if let Some(r) = &external_ref {
             if r.is_empty() {
                 errs.push(RowError::new(row, "externalRef", "empty reference"));
@@ -180,8 +213,8 @@ impl CsvParser {
             direction: direction.unwrap(),
             counterparty,
             description: description.unwrap(),
-            counterparty_bic: None,
-            counterparty_account: None,
+            counterparty_bic,
+            counterparty_account,
         })
     }
 
@@ -293,6 +326,8 @@ mod tests {
             description: ColRef::Header("desc".into()),
             currency: Some(ColRef::Header("ccy".into())),
             counterparty: None,
+            counterparty_bic: None,
+            counterparty_account: None,
         }
     }
 
@@ -322,6 +357,8 @@ mod tests {
             description: ColRef::Index(4),
             currency: None,
             counterparty: None,
+            counterparty_bic: None,
+            counterparty_account: None,
         };
         let csv = "R1,10/05/2026,12.50,,Coffee\nR2,11/05/2026,,40.00,Refund\n";
         let txns = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap();
@@ -369,6 +406,8 @@ mod tests {
             description: ColRef::Index(2),
             currency: None,
             counterparty: None,
+            counterparty_bic: None,
+            counterparty_account: None,
         };
         let csv = "R1,2026-05-10,Coffee\n";
         let errs = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap_err();
@@ -392,11 +431,64 @@ mod tests {
             description: ColRef::Index(2),
             currency: None,
             counterparty: None,
+            counterparty_bic: None,
+            counterparty_account: None,
         };
         let csv = "R1,2026-05-10,40.00\n";
         let errs = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_eq!(errs[0].field, "amount");
         assert!(errs[0].message.contains("out of range"), "expected 'out of range' in: {}", errs[0].message);
+    }
+
+    #[test]
+    fn counterparty_bic_and_account_columns_extracted_and_bic_uppercased() {
+        let mapping = CsvMapping {
+            has_header: true,
+            delimiter: b',',
+            external_ref: ColRef::Index(0),
+            value_date: ColRef::Index(1),
+            date_format: "%Y-%m-%d".into(),
+            amount: AmountMapping::Signed { column: ColRef::Index(2), debit_when_negative: true },
+            description: ColRef::Index(3),
+            currency: None,
+            counterparty: None,
+            counterparty_bic: Some(ColRef::Index(4)),
+            counterparty_account: Some(ColRef::Index(5)),
+        };
+        let csv = "ref,date,amount,desc,bic,acc\n\
+                   R1,2026-01-01,100.00,Test 1,deutdeff,DE89370400440532013000\n\
+                   R2,2026-01-02,200.00,Test 2,,\n";
+        let txns = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap();
+        assert_eq!(txns.len(), 2);
+        assert_eq!(txns[0].counterparty_bic.as_deref(), Some("DEUTDEFF")); // uppercased
+        assert_eq!(
+            txns[0].counterparty_account.as_deref(),
+            Some("DE89370400440532013000")
+        );
+        // Row 2 has empty values → None.
+        assert!(txns[1].counterparty_bic.is_none());
+        assert!(txns[1].counterparty_account.is_none());
+    }
+
+    #[test]
+    fn counterparty_columns_default_none_when_mapping_omits_them() {
+        let mapping = CsvMapping {
+            has_header: true,
+            delimiter: b',',
+            external_ref: ColRef::Index(0),
+            value_date: ColRef::Index(1),
+            date_format: "%Y-%m-%d".into(),
+            amount: AmountMapping::Signed { column: ColRef::Index(2), debit_when_negative: true },
+            description: ColRef::Index(3),
+            currency: None,
+            counterparty: None,
+            counterparty_bic: None,
+            counterparty_account: None,
+        };
+        let csv = "ref,date,amount,desc\nR1,2026-01-01,100.00,Test\n";
+        let txns = CsvParser::new(mapping).parse(csv.as_bytes()).unwrap();
+        assert!(txns[0].counterparty_bic.is_none());
+        assert!(txns[0].counterparty_account.is_none());
     }
 }

@@ -13,6 +13,8 @@ fn mapping() -> CsvMapping {
         description: ColRef::Index(3),
         currency: None,
         counterparty: None,
+        counterparty_bic: None,
+        counterparty_account: None,
     }
 }
 
