@@ -97,7 +97,7 @@ impl Store {
             &mut tx,
             tenant_id,
             actor_id,
-            recon_audit::AuditPayload::SourceUpdated {
+            recon_audit::AuditPayload::DataSourceUpdated {
                 source_id: source_id.to_string(),
                 before_name: before.name.clone(),
                 after_name: after_name.clone(),

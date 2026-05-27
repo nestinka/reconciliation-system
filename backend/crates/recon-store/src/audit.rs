@@ -75,10 +75,12 @@ impl Store {
         let hash = chain::compute_hash(&prev_hash, seq, tenant_id, &at, actor_id, kind, &payload);
 
         // 3. Insert. The composite PK rejects a colliding concurrent insert with 23505;
-        //    in practice the FOR UPDATE above serializes appenders within a tenant, so
-        //    the only realistic collision window is two concurrent genesis inserts on
-        //    a brand-new tenant. Callers surface the 23505 as a 500 and the client
-        //    retries the whole request — there is no in-store retry loop.
+        //    in practice the advisory lock above serializes appenders within a tenant
+        //    (including the genesis case where no row exists yet), so the only
+        //    realistic collision window would be a hash-collision between two
+        //    different tenant_ids — at which point the loser blocks until the
+        //    winner commits, then proceeds with the correct head.
+        //    The 23505 path therefore stays as defence-in-depth only.
         let payload_json = serde_json::to_value(&payload)?;
         sqlx::query(
             "INSERT INTO audit_events(tenant_id,seq,at,actor_id,kind,payload,prev_hash,hash) \

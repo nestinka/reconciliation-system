@@ -16,7 +16,7 @@ pub enum AuditKind {
     AuthPasswordChanged, AuthPasswordResetRequested, AuthPasswordResetCompleted,
     AuthRefreshReused, AuthTenantSwitched,
     AdminUserCreated, AdminUserRoleChanged, AdminUserDisabled, AdminUserEnabled, AdminUserRemoved,
-    DataSourceCreated, SourceUpdated, DataIngestCompleted, DataRunCreated,
+    DataSourceCreated, DataSourceUpdated, DataIngestCompleted, DataRunCreated,
     CaseAssigned, CaseEventAppended,
     SystemAnchorCreated,
 }
@@ -43,7 +43,7 @@ impl AuditKind {
             AuditKind::AdminUserEnabled => "admin.user.enabled",
             AuditKind::AdminUserRemoved => "admin.user.removed",
             AuditKind::DataSourceCreated => "data.source.created",
-            AuditKind::SourceUpdated => "source.updated",
+            AuditKind::DataSourceUpdated => "data.source.updated",
             AuditKind::DataIngestCompleted => "data.ingest.completed",
             AuditKind::DataRunCreated => "data.run.created",
             AuditKind::CaseAssigned => "case.assigned",
@@ -70,7 +70,7 @@ impl AuditKind {
             "admin.user.enabled" => AuditKind::AdminUserEnabled,
             "admin.user.removed" => AuditKind::AdminUserRemoved,
             "data.source.created" => AuditKind::DataSourceCreated,
-            "source.updated" => AuditKind::SourceUpdated,
+            "data.source.updated" => AuditKind::DataSourceUpdated,
             "data.ingest.completed" => AuditKind::DataIngestCompleted,
             "data.run.created" => AuditKind::DataRunCreated,
             "case.assigned" => AuditKind::CaseAssigned,
@@ -114,7 +114,7 @@ pub enum AuditPayload {
     AdminUserEnabled { user_id: String },
     AdminUserRemoved { user_id: String },
     DataSourceCreated { source_id: String, kind: String, currency: String, name: String },
-    SourceUpdated {
+    DataSourceUpdated {
         source_id: String,
         before_name: String,
         after_name: String,
@@ -147,7 +147,7 @@ impl AuditPayload {
             AuditPayload::AdminUserEnabled { .. } => AuditKind::AdminUserEnabled,
             AuditPayload::AdminUserRemoved { .. } => AuditKind::AdminUserRemoved,
             AuditPayload::DataSourceCreated { .. } => AuditKind::DataSourceCreated,
-            AuditPayload::SourceUpdated { .. } => AuditKind::SourceUpdated,
+            AuditPayload::DataSourceUpdated { .. } => AuditKind::DataSourceUpdated,
             AuditPayload::DataIngestCompleted { .. } => AuditKind::DataIngestCompleted,
             AuditPayload::DataRunCreated { .. } => AuditKind::DataRunCreated,
             AuditPayload::CaseAssigned { .. } => AuditKind::CaseAssigned,
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(AuditKind::AuthLoginSuccess.as_str(), "auth.login.success");
         assert_eq!(AuditKind::DataIngestCompleted.as_str(), "data.ingest.completed");
         assert_eq!(AuditKind::SystemAnchorCreated.as_str(), "system.anchor.created");
-        assert_eq!(AuditKind::SourceUpdated.as_str(), "source.updated");
+        assert_eq!(AuditKind::DataSourceUpdated.as_str(), "data.source.updated");
     }
 
     #[test]
