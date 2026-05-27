@@ -91,6 +91,28 @@ pub struct CreateRunReq {
     pub to: String,
 }
 
+/// PATCH /sources/:id request body.
+///
+/// `format_dialect` uses a double-`Option` so we can distinguish three states:
+///   - field absent in JSON           → don't change
+///   - field present with `null`      → clear the dialect
+///   - field present with a value     → set it
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateSourceReq {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_double_option")]
+    pub format_dialect: Option<Option<String>>,
+}
+
+fn deserialize_double_option<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(de).map(Some)
+}
+
 // --- Auth DTOs ---
 
 #[derive(serde::Deserialize)]
