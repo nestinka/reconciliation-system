@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { AuditKind } from "@/lib/api/client";
 
 // ---------------------------------------------------------------------------
-// AuditKind list (must mirror the union in client.ts — 20 values)
+// AuditKind list (must mirror the union in client.ts — 21 values)
 // ---------------------------------------------------------------------------
 
 export const ALL_KINDS: readonly AuditKind[] = [
@@ -28,6 +28,7 @@ export const ALL_KINDS: readonly AuditKind[] = [
   "admin.user.enabled",
   "admin.user.removed",
   "data.source.created",
+  "data.source.updated",
   "data.ingest.completed",
   "data.run.created",
   "case.assigned",

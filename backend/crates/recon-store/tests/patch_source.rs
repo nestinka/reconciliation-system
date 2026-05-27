@@ -73,7 +73,7 @@ async fn empty_patch_no_changes_still_emits_audit_row(pool: sqlx::PgPool) {
         .unwrap();
     assert_eq!(updated.name, "Original");
     let count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM audit_events WHERE tenant_id=$1 AND kind='source.updated'",
+        "SELECT COUNT(*) FROM audit_events WHERE tenant_id=$1 AND kind='data.source.updated'",
     )
     .bind(&t)
     .fetch_one(&store.pool)

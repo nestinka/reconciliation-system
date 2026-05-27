@@ -118,7 +118,7 @@ export type AuditKind =
   | "auth.password.changed" | "auth.password.reset_requested" | "auth.password.reset_completed"
   | "auth.refresh.reused" | "auth.tenant.switched"
   | "admin.user.created" | "admin.user.role_changed" | "admin.user.disabled" | "admin.user.enabled" | "admin.user.removed"
-  | "data.source.created" | "data.ingest.completed" | "data.run.created"
+  | "data.source.created" | "data.source.updated" | "data.ingest.completed" | "data.run.created"
   | "case.assigned" | "case.event_appended"
   | "system.anchor.created";
 
