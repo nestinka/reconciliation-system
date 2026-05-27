@@ -306,9 +306,12 @@ fn build_txn(
             "no customer-ref or bank-ref on :61:".to_string(),
         ))?;
     let raw_info = info_lines.join("");
-    let (description, counterparty) = match dialect {
-        Mt940Dialect::Generic => (raw_info, None),
-        Mt940Dialect::Subfielded => parse_subfielded_86(&raw_info),
+    let (description, counterparty, counterparty_bic, counterparty_account) = match dialect {
+        Mt940Dialect::Generic => (raw_info, None, None, None),
+        Mt940Dialect::Subfielded => {
+            let s = parse_subfielded_86(&raw_info);
+            (s.description, s.counterparty, s.counterparty_bic, s.counterparty_account)
+        }
     };
     Ok(ParsedTxn {
         external_ref,
@@ -319,16 +322,29 @@ fn build_txn(
         direction: p.direction,
         counterparty,
         description,
-        counterparty_bic: None,
-        counterparty_account: None,
+        counterparty_bic,
+        counterparty_account,
     })
 }
 
+/// Parsed result of a Subfielded `:86:` field.
+struct SubfieldedInfo {
+    description: String,
+    counterparty: Option<String>,
+    counterparty_bic: Option<String>,
+    counterparty_account: Option<String>,
+}
+
 /// Parse a Subfielded `:86:` field. Subfields are `?nn` separated.
-fn parse_subfielded_86(raw: &str) -> (String, Option<String>) {
-    // Split on '?'. The first chunk before any '?' is a free-form prefix.
+///
+/// `?32` → `counterparty_account` (trimmed); `?33` → `counterparty_bic`
+/// (trimmed + uppercased). Both fields are structural in Phase 7. `?20`–`?29`
+/// fold into description; `?30`/`?31` (counterparty bank BLZ + account) and
+/// unknown subfields are preserved verbatim inside the description.
+fn parse_subfielded_86(raw: &str) -> SubfieldedInfo {
     let mut desc_parts: Vec<String> = Vec::new();
-    let mut cp_parts: Vec<String> = Vec::new();
+    let mut cpty_bic: Option<String> = None;
+    let mut cpty_account: Option<String> = None;
     let mut prefix = String::new();
     let mut chunks = raw.split('?');
     if let Some(first) = chunks.next() {
@@ -349,11 +365,24 @@ fn parse_subfielded_86(raw: &str) -> (String, Option<String>) {
             "20" | "21" | "22" | "23" | "24" | "25" | "26" | "27" | "28" | "29" => {
                 desc_parts.push(val.to_string());
             }
-            "32" | "33" => {
-                cp_parts.push(val.to_string());
+            "32" => {
+                if cpty_account.is_none() {
+                    let v = val.trim();
+                    if !v.is_empty() {
+                        cpty_account = Some(v.to_string());
+                    }
+                }
+            }
+            "33" => {
+                if cpty_bic.is_none() {
+                    let v = val.trim().to_uppercase();
+                    if !v.is_empty() {
+                        cpty_bic = Some(v);
+                    }
+                }
             }
             "30" | "31" => {
-                // counterparty bank BIC + account — append to description for transparency
+                // Counterparty bank BLZ + account — preserve into description.
                 desc_parts.push(format!("[{code}:{val}]"));
             }
             _ => {
@@ -363,12 +392,12 @@ fn parse_subfielded_86(raw: &str) -> (String, Option<String>) {
         }
     }
     let description = desc_parts.join(" ").trim().to_string();
-    let counterparty = if cp_parts.is_empty() {
-        None
-    } else {
-        Some(cp_parts.join(" ").trim().to_string())
-    };
-    (description, counterparty)
+    SubfieldedInfo {
+        description,
+        counterparty: None,
+        counterparty_bic: cpty_bic,
+        counterparty_account: cpty_account,
+    }
 }
 
 #[cfg(test)]
@@ -412,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn subfielded_86_extracts_counterparty() {
+    fn subfielded_86_extracts_counterparty_bic_and_account() {
         let bytes = load("mt940-subfielded.sta");
         let txns = Mt940Parser {
             dialect: Mt940Dialect::Subfielded,
@@ -422,11 +451,24 @@ mod tests {
         assert_eq!(txns.len(), 1);
         let t = &txns[0];
         assert_eq!(
-            t.counterparty.as_deref(),
-            Some("Acme Supplier Ltd London Branch")
+            t.counterparty_account.as_deref(),
+            Some("DE89370400440532013000")
         );
+        assert_eq!(t.counterparty_bic.as_deref(), Some("DEUTDEFF"));
         assert!(t.description.contains("Invoice payment"));
         assert!(t.description.contains("INV-12345"));
+    }
+
+    #[test]
+    fn generic_86_does_not_populate_counterparty_fields() {
+        let bytes = load("mt940-subfielded.sta");
+        let txns = Mt940Parser {
+            dialect: Mt940Dialect::Generic,
+        }
+        .parse(&bytes)
+        .unwrap();
+        assert!(txns[0].counterparty_bic.is_none());
+        assert!(txns[0].counterparty_account.is_none());
     }
 
     #[test]
@@ -440,7 +482,8 @@ mod tests {
         let t = &txns[0];
         assert!(t.counterparty.is_none());
         // Whole :86: ends up in description verbatim (with the ?nn codes still in there).
-        assert!(t.description.contains("?32Acme Supplier Ltd"));
+        assert!(t.description.contains("?32DE89370400440532013000"));
+        assert!(t.description.contains("?33DEUTDEFF"));
     }
 
     #[test]
