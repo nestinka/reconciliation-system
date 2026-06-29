@@ -28,6 +28,7 @@ export const sourceSchema = z.object({
   name: z.string(),
   currency: z.string(),
   formatDialect: formatDialectSchema.nullable(),
+  pdfProfile: z.string().nullable().optional(),
 });
 export type Source = z.infer<typeof sourceSchema>;
 

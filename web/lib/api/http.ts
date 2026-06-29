@@ -86,6 +86,10 @@ export class HttpApiClient implements ApiClient {
   }
 
   listSources(tenantId: string): Promise<SourceListItem[]> { return this.req("/api/sources", tenantId); }
+  async listPdfProfiles(tenantId: string): Promise<string[]> {
+    const r = await this.req<{ profiles: string[] }>("/api/pdf-profiles", tenantId);
+    return r.profiles;
+  }
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
     return this.req("/api/sources", tenantId, { method: "POST", body: JSON.stringify(input) });
   }
@@ -93,6 +97,7 @@ export class HttpApiClient implements ApiClient {
     const body: Record<string, unknown> = {};
     if (patch.name !== undefined) body.name = patch.name;
     if (patch.formatDialect !== undefined) body.formatDialect = patch.formatDialect;
+    if (patch.pdfProfile !== undefined) body.pdfProfile = patch.pdfProfile;
     return this.req(`/api/sources/${sourceId}`, tenantId, { method: "PATCH", body: JSON.stringify(body) });
   }
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun> {

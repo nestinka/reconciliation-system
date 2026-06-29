@@ -335,6 +335,8 @@ function fileAccept(format: IngestFormat): string {
       return ".mt942,.sta,.txt,text/plain";
     case "bai2":
       return ".bai,.bai2,.txt,text/plain";
+    case "pdf":
+      return ".pdf,application/pdf";
   }
 }
 
