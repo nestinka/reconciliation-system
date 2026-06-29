@@ -276,4 +276,63 @@ mod tests {
         assert!(text.contains("A1B2C3"), "got:\n{text}");
         assert!(text.contains("FASTER PAYMENT FROM J SMITH"), "got:\n{text}");
     }
+
+    fn header_plus(row: &str) -> Vec<String> {
+        lines(&["Date    Description    Ref    Amount    Dr/Cr", row])
+    }
+
+    #[test]
+    fn rejects_bad_date() {
+        let err = AcmeBankProfile
+            .parse_lines(&header_plus("99/99/2026    DESC    R1    10.00    DR"))
+            .unwrap_err();
+        assert_eq!(err[0].field, "date");
+    }
+
+    #[test]
+    fn rejects_bad_amount() {
+        let err = AcmeBankProfile
+            .parse_lines(&header_plus("12/03/2026    DESC    R1    not-money    DR"))
+            .unwrap_err();
+        assert_eq!(err[0].field, "amount");
+    }
+
+    #[test]
+    fn rejects_invalid_dr_cr_marker() {
+        let err = AcmeBankProfile
+            .parse_lines(&header_plus("12/03/2026    DESC    R1    10.00    XX"))
+            .unwrap_err();
+        assert_eq!(err[0].field, "direction");
+    }
+
+    #[test]
+    fn rejects_empty_ref() {
+        // A row missing the ref column collapses to 4 fields -> "row" error
+        // (split_columns filters empty cells, so an empty ref is unreachable as "ref").
+        let err = AcmeBankProfile
+            .parse_lines(&header_plus("12/03/2026    DESC    10.00    DR"))
+            .unwrap_err();
+        assert_eq!(err[0].field, "row");
+    }
+
+    #[test]
+    fn rejects_wrong_column_count() {
+        let err = AcmeBankProfile
+            .parse_lines(&header_plus("12/03/2026    DESC    R1    10.00    DR    EXTRA"))
+            .unwrap_err();
+        assert_eq!(err[0].field, "row");
+    }
+
+    #[test]
+    fn collects_all_row_errors_atomically() {
+        let input = lines(&[
+            "Date    Description    Ref    Amount    Dr/Cr",
+            "bad-date    DESC    R1    10.00    DR",
+            "12/03/2026    DESC    R2    bad-amt    CR",
+        ]);
+        let err = AcmeBankProfile.parse_lines(&input).unwrap_err();
+        assert_eq!(err.len(), 2);
+        assert_eq!(err[0].field, "date");
+        assert_eq!(err[1].field, "amount");
+    }
 }
