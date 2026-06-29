@@ -18,6 +18,7 @@ async fn fixture_source(store: &Store) -> (String, String, String) {
             "EUR",
             &actor_id,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -29,7 +30,7 @@ async fn rename_only_changes_name_and_keeps_dialect_null(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     let (t, a, sid) = fixture_source(&store).await;
     let updated = store
-        .update_source(&t, &sid, &a, Some("Renamed"), None)
+        .update_source(&t, &sid, &a, Some("Renamed"), None, None)
         .await
         .unwrap();
     assert_eq!(updated.name, "Renamed");
@@ -41,7 +42,7 @@ async fn set_dialect_only_keeps_name_and_sets_dialect(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     let (t, a, sid) = fixture_source(&store).await;
     let updated = store
-        .update_source(&t, &sid, &a, None, Some(Some("subfielded")))
+        .update_source(&t, &sid, &a, None, Some(Some("subfielded")), None)
         .await
         .unwrap();
     assert_eq!(updated.name, "Original");
@@ -53,11 +54,11 @@ async fn clear_dialect_sets_it_back_to_null(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     let (t, a, sid) = fixture_source(&store).await;
     let _ = store
-        .update_source(&t, &sid, &a, None, Some(Some("subfielded")))
+        .update_source(&t, &sid, &a, None, Some(Some("subfielded")), None)
         .await
         .unwrap();
     let updated = store
-        .update_source(&t, &sid, &a, None, Some(None))
+        .update_source(&t, &sid, &a, None, Some(None), None)
         .await
         .unwrap();
     assert!(updated.format_dialect.is_none());
@@ -68,7 +69,7 @@ async fn empty_patch_no_changes_still_emits_audit_row(pool: sqlx::PgPool) {
     let store = Store::from_pool(pool);
     let (t, a, sid) = fixture_source(&store).await;
     let updated = store
-        .update_source(&t, &sid, &a, None, None)
+        .update_source(&t, &sid, &a, None, None, None)
         .await
         .unwrap();
     assert_eq!(updated.name, "Original");
@@ -93,7 +94,7 @@ async fn cross_tenant_update_returns_not_found(pool: sqlx::PgPool) {
         .await
         .unwrap();
     let err = store
-        .update_source(&other, &sid, &a, Some("X"), None)
+        .update_source(&other, &sid, &a, Some("X"), None, None)
         .await
         .unwrap_err();
     assert!(matches!(err, recon_store::StoreError::NotFound));

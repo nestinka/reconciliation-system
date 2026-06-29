@@ -106,6 +106,7 @@ pub struct Source {
     pub name: String,
     pub currency: String,
     pub format_dialect: Option<String>,
+    pub pdf_profile: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +203,7 @@ mod tests {
             name: "Acme Cross".into(),
             currency: "USD".into(),
             format_dialect: None,
+            pdf_profile: None,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["tenantId"], "tenant-acme");

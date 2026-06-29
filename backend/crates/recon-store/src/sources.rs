@@ -29,16 +29,18 @@ impl Store {
         currency: &str,
         actor_id: &str,
         format_dialect: Option<&str>,
+        pdf_profile: Option<&str>,
     ) -> Result<Source, StoreError> {
         let id = format!("src-{}", Uuid::new_v4());
         let mut tx = self.pool.begin().await?;
-        sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency,format_dialect) VALUES ($1,$2,$3,$4,$5,$6)")
+        sqlx::query("INSERT INTO sources(id,tenant_id,kind,name,currency,format_dialect,pdf_profile) VALUES ($1,$2,$3,$4,$5,$6,$7)")
             .bind(&id)
             .bind(tenant_id)
             .bind(kind_str(kind))
             .bind(name)
             .bind(currency)
             .bind(format_dialect)
+            .bind(pdf_profile)
             .execute(&mut *tx)
             .await?;
         self.append_audit(
@@ -61,6 +63,7 @@ impl Store {
             name: name.to_string(),
             currency: currency.to_string(),
             format_dialect: format_dialect.map(|s| s.to_string()),
+            pdf_profile: pdf_profile.map(|s| s.to_string()),
         })
     }
 
@@ -74,6 +77,8 @@ impl Store {
         new_name: Option<&str>,
         // None = field absent; Some(None) = clear; Some(Some(v)) = set to v.
         new_format_dialect: Option<Option<&str>>,
+        // None = field absent; Some(None) = clear; Some(Some(v)) = set to v.
+        new_pdf_profile: Option<Option<&str>>,
     ) -> Result<Source, StoreError> {
         let before = self.get_source(tenant_id, source_id).await?;
 
@@ -84,10 +89,15 @@ impl Store {
             None => before.format_dialect.clone(),
             Some(v) => v.map(|s| s.to_string()),
         };
+        let after_pdf_profile: Option<String> = match new_pdf_profile {
+            None => before.pdf_profile.clone(),
+            Some(v) => v.map(|s| s.to_string()),
+        };
 
-        sqlx::query("UPDATE sources SET name=$1, format_dialect=$2 WHERE id=$3 AND tenant_id=$4")
+        sqlx::query("UPDATE sources SET name=$1, format_dialect=$2, pdf_profile=$3 WHERE id=$4 AND tenant_id=$5")
             .bind(&after_name)
             .bind(&after_dialect)
+            .bind(&after_pdf_profile)
             .bind(source_id)
             .bind(tenant_id)
             .execute(&mut *tx)
@@ -115,12 +125,13 @@ impl Store {
             name: after_name,
             currency: before.currency,
             format_dialect: after_dialect,
+            pdf_profile: after_pdf_profile,
         })
     }
 
     pub async fn get_source(&self, tenant_id: &str, id: &str) -> Result<Source, StoreError> {
         let row: Option<SourceRow> =
-            sqlx::query_as("SELECT id,tenant_id,kind,name,currency,format_dialect FROM sources WHERE id=$1 AND tenant_id=$2")
+            sqlx::query_as("SELECT id,tenant_id,kind,name,currency,format_dialect,pdf_profile FROM sources WHERE id=$1 AND tenant_id=$2")
                 .bind(id)
                 .bind(tenant_id)
                 .fetch_optional(&self.pool)
@@ -137,15 +148,16 @@ impl Store {
             name: String,
             currency: String,
             format_dialect: Option<String>,
+            pdf_profile: Option<String>,
             txn_count: i64,
         }
         let rows: Vec<Row> = sqlx::query_as(
-            "SELECT s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, \
+            "SELECT s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile, \
                     COUNT(t.id) AS txn_count \
              FROM sources s \
              LEFT JOIN canonical_transactions t ON t.source_id = s.id AND t.tenant_id = s.tenant_id \
              WHERE s.tenant_id = $1 \
-             GROUP BY s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect \
+             GROUP BY s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile \
              ORDER BY s.name",
         )
         .bind(tenant_id)
@@ -165,6 +177,7 @@ impl Store {
                     name: r.name,
                     currency: r.currency,
                     format_dialect: r.format_dialect,
+                    pdf_profile: r.pdf_profile,
                 },
                 txn_count: r.txn_count,
             })

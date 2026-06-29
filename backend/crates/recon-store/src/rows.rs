@@ -110,6 +110,7 @@ pub struct SourceRow {
     pub name: String,
     pub currency: String,
     pub format_dialect: Option<String>,
+    pub pdf_profile: Option<String>,
 }
 impl From<SourceRow> for Source {
     fn from(r: SourceRow) -> Self {
@@ -120,6 +121,7 @@ impl From<SourceRow> for Source {
             name: r.name,
             currency: r.currency,
             format_dialect: r.format_dialect,
+            pdf_profile: r.pdf_profile,
         }
     }
 }
