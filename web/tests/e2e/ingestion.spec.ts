@@ -7,6 +7,7 @@ const PASSWORD = "Password123!";
 
 const BANK_CSV = path.join(__dirname, "fixtures/bank.csv");
 const LEDGER_XML = path.join(__dirname, "fixtures/ledger.camt053.xml");
+const PDF_ACMEBANK = path.join(__dirname, "fixtures/pdf-acmebank.pdf");
 
 test.beforeEach(async () => {
   await reseed();
@@ -187,6 +188,68 @@ test("admin creates an MT940 source with subfielded dialect and ingests", async 
 
   // Success toast: "1 transaction ingested." (matches upload-dialog onSuccess)
   await expect(page.getByText(/1 transaction ingested/i)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Dialog closes after success
+  await expect(uploadDialog).not.toBeVisible({ timeout: 10_000 });
+});
+
+test("ingests a PDF bank statement via the acmebank profile", async ({
+  page,
+}) => {
+  await loginViaUI(page, ADA_EMAIL, PASSWORD);
+
+  // ── Create a bank source with the acmebank PDF profile ───────────────────
+  await page.goto("/sources");
+  await page.getByRole("button", { name: /new source/i }).click();
+
+  const newSourceDialog = page.getByRole("dialog");
+  await expect(newSourceDialog).toBeVisible();
+
+  await newSourceDialog.getByLabel("Name").fill("E2E PDF Bank");
+  // Kind defaults to "bank" — no change needed
+  await newSourceDialog.getByLabel("Currency").fill("GBP");
+
+  // Select the acmebank PDF profile (Base UI combobox via aria-label)
+  await newSourceDialog
+    .getByRole("combobox", { name: /pdf profile/i })
+    .click();
+  await page.getByRole("option", { name: "acmebank" }).click();
+
+  await newSourceDialog
+    .getByRole("button", { name: /create source/i })
+    .click();
+
+  // Dialog closes; source row appears in the table
+  await expect(newSourceDialog).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("cell", { name: "E2E PDF Bank" })).toBeVisible();
+
+  // ── Open Upload dialog and choose PDF format ─────────────────────────────
+  await page
+    .getByRole("row", { name: /E2E PDF Bank/ })
+    .getByRole("button", { name: /upload/i })
+    .click();
+
+  const uploadDialog = page.getByRole("dialog");
+  await expect(uploadDialog).toBeVisible();
+
+  // Switch format to "PDF statement"
+  await uploadDialog.getByRole("combobox", { name: "Format" }).click();
+  await page.getByRole("option", { name: /PDF statement/i }).click();
+
+  // The dialog should show the active PDF profile, not the amber warning
+  await expect(
+    uploadDialog.getByText(/using pdf profile/i)
+  ).toBeVisible({ timeout: 5_000 });
+
+  // Attach the fixture PDF
+  await uploadDialog.getByLabel("File").setInputFiles(PDF_ACMEBANK);
+
+  await uploadDialog.getByRole("button", { name: /^upload$/i }).click();
+
+  // Success toast: "3 transactions ingested." (fixture has 3 rows)
+  await expect(page.getByText(/3 transactions ingested/i)).toBeVisible({
     timeout: 15_000,
   });
 

@@ -93,6 +93,7 @@ Supported formats:
 | MT940 | SWIFT customer statement; Generic or Subfielded dialect (per-source); Subfielded `?32` → counterparty account, `?33` → counterparty BIC; multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
 | MT942 | SWIFT intra-day report; same dialects as MT940; `:34F:` floor-limit and `:13D:` date/time tags parsed and discarded; declared `:90D:` / `:90C:` totals are sanity-checked against parsed counts + sums (mismatch rejects the file) |
 | BAI v2 | US-bank cash-management format; built-in type-code → debit/credit mapping; `88` continuation records merge into the preceding `16` |
+| PDF | Text-layer bank statements; requires a per-source PDF profile (e.g. `acmebank`) — set it on the source before uploading. Scanned/image PDFs are not supported. |
 
 The sources table shows an `MT940 · <dialect>` badge for sources with a dialect set (the dialect applies to both MT940 and MT942 uploads from the source).
 
