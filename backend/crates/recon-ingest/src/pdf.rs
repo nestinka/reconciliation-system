@@ -1,6 +1,6 @@
 //! Text-layer PDF bank-statement parsing via per-bank profiles.
 
-use crate::RowError;
+use crate::{ParsedTxn, Parser, RowError};
 
 /// Extract the PDF text layer. Maps any reader failure to a single document-level
 /// RowError (row 0). A scanned/image-only PDF yields empty/whitespace text, which
@@ -10,9 +10,87 @@ pub(crate) fn extract_text(bytes: &[u8]) -> Result<String, Vec<RowError>> {
         .map_err(|e| vec![RowError::new(0, "document", format!("could not read PDF: {e}"))])
 }
 
+/// Per-bank PDF layout knowledge. Given the already-extracted, normalized lines,
+/// produce transaction drafts. Atomic & fail-loud, like every `Parser`.
+pub trait PdfProfile {
+    fn name(&self) -> &'static str;
+    fn parse_lines(&self, lines: &[String]) -> Result<Vec<ParsedTxn>, Vec<RowError>>;
+}
+
+/// Generic text-layer PDF parser. Bank-specific mapping lives in `profile`.
+pub struct PdfParser {
+    pub profile: Box<dyn PdfProfile>,
+}
+
+/// Resolve a profile by its stored name. Unknown name -> None (API maps to 400).
+pub fn resolve_profile(name: &str) -> Option<Box<dyn PdfProfile>> {
+    match name {
+        "acmebank" => Some(Box::new(AcmeBankProfile)),
+        _ => None,
+    }
+}
+
+/// The single source of truth for available profile names (API validation + listing).
+pub fn profile_names() -> &'static [&'static str] {
+    &["acmebank"]
+}
+
+/// Trim each line and drop blank lines, preserving order.
+fn normalize_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+impl Parser for PdfParser {
+    fn parse(&self, bytes: &[u8]) -> Result<Vec<ParsedTxn>, Vec<RowError>> {
+        let text = extract_text(bytes)?;
+        let lines = normalize_lines(&text);
+        if lines.is_empty() {
+            return Err(vec![RowError::new(
+                0,
+                "document",
+                "no extractable text layer (scanned PDF?)",
+            )]);
+        }
+        self.profile.parse_lines(&lines)
+    }
+}
+
+/// Synthetic columnar layout: `Date  Description  Ref  Amount  Dr/Cr`.
+pub struct AcmeBankProfile;
+
+impl PdfProfile for AcmeBankProfile {
+    fn name(&self) -> &'static str {
+        "acmebank"
+    }
+    fn parse_lines(&self, _lines: &[String]) -> Result<Vec<ParsedTxn>, Vec<RowError>> {
+        Ok(Vec::new())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Parser;
+
+    #[test]
+    fn resolve_known_and_unknown_profiles() {
+        assert!(resolve_profile("acmebank").is_some());
+        assert!(resolve_profile("nope").is_none());
+        assert_eq!(profile_names(), &["acmebank"]);
+    }
+
+    #[test]
+    fn empty_pdf_rejects_with_document_error() {
+        // pdf-extract on non-PDF bytes errors -> document RowError row 0.
+        let err = PdfParser { profile: Box::new(AcmeBankProfile) }
+            .parse(b"not a pdf")
+            .unwrap_err();
+        assert_eq!(err[0].row, 0);
+        assert_eq!(err[0].field, "document");
+    }
 
     #[test]
     #[ignore = "regenerates the committed PDF fixture"]
