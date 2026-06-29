@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api/provider";
 import { useTenant } from "@/lib/providers/tenant-provider";
 import type { FormatDialect } from "@/lib/api/client";
@@ -33,6 +33,7 @@ const DIALECT_NONE = "__none__";
 const schema = z.object({
   name: z.string().min(1, "Name is required").max(80, "Name too long"),
   formatDialect: z.enum(["generic", "subfielded"]).nullable(),
+  pdfProfile: z.string().nullable(),
 });
 type FormValues = z.infer<typeof schema>;
 
@@ -58,9 +59,16 @@ export function EditSourceDialog({ source, open, onOpenChange }: Props) {
     defaultValues: {
       name: source.name,
       formatDialect: source.formatDialect ?? null,
+      pdfProfile: source.pdfProfile ?? null,
     },
   });
   const formatDialect = watch("formatDialect");
+  const pdfProfile = watch("pdfProfile");
+
+  const { data: pdfProfiles = [] } = useQuery({
+    queryKey: ["pdf-profiles", tenantId],
+    queryFn: () => api.listPdfProfiles(tenantId),
+  });
 
   // Re-seed when opening for a different source (or after a save).
   useEffect(() => {
@@ -68,16 +76,20 @@ export function EditSourceDialog({ source, open, onOpenChange }: Props) {
       reset({
         name: source.name,
         formatDialect: source.formatDialect ?? null,
+        pdfProfile: source.pdfProfile ?? null,
       });
     }
-  }, [open, source.id, source.name, source.formatDialect, reset]);
+  }, [open, source.id, source.name, source.formatDialect, source.pdfProfile, reset]);
 
   const updateMutation = useMutation({
     mutationFn: (values: FormValues) => {
-      const patch: { name?: string; formatDialect?: FormatDialect | null } = {};
+      const patch: { name?: string; formatDialect?: FormatDialect | null; pdfProfile?: string | null } = {};
       if (values.name !== source.name) patch.name = values.name;
       if (values.formatDialect !== source.formatDialect) {
         patch.formatDialect = values.formatDialect;
+      }
+      if (values.pdfProfile !== (source.pdfProfile ?? null)) {
+        patch.pdfProfile = values.pdfProfile;
       }
       return api.updateSource(tenantId, source.id, patch);
     },
@@ -138,6 +150,30 @@ export function EditSourceDialog({ source, open, onOpenChange }: Props) {
                 <SelectItem value="subfielded">
                   Subfielded (DE/NL/BE)
                 </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-src-pdf-profile">
+              PDF profile{" "}
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
+            </Label>
+            <Select
+              value={pdfProfile ?? DIALECT_NONE}
+              onValueChange={(v) =>
+                setValue("pdfProfile", v === DIALECT_NONE ? null : v)
+              }
+            >
+              <SelectTrigger id="edit-src-pdf-profile" aria-label="PDF profile">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DIALECT_NONE}>Not applicable</SelectItem>
+                {pdfProfiles.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
