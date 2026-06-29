@@ -87,7 +87,8 @@ impl PdfProfile for AcmeBankProfile {
             if is_footer(line) {
                 continue;
             }
-            // 1-based line number in the extracted text, for the row report.
+            // 1-based position among the non-blank extracted lines (blank lines were
+            // already dropped by normalize_lines), used as the row locator in errors.
             let row_no = i + 1;
             match parse_acme_row(line) {
                 Ok(txn) => out.push(txn),
@@ -119,6 +120,8 @@ fn split_columns(line: &str) -> Vec<&str> {
         .collect()
 }
 
+/// Parse one transaction row: `Date  Description  Ref  Amount  Dr/Cr` → ParsedTxn.
+/// Returns `(field, message)` on the first failure for the row.
 fn parse_acme_row(line: &str) -> Result<ParsedTxn, (&'static str, String)> {
     let fields = split_columns(line);
     if fields.len() != 5 {
@@ -128,9 +131,6 @@ fn parse_acme_row(line: &str) -> Result<ParsedTxn, (&'static str, String)> {
         (fields[0], fields[1], fields[2], fields[3], fields[4]);
 
     let value_date = parse_uk_date(date_s).map_err(|m| ("date", m))?;
-    if reff.is_empty() {
-        return Err(("ref", "empty reference".to_string()));
-    }
     // The amount column is always positive; direction comes from the DR/CR marker.
     let amount_minor = parse_decimal_to_minor(amount_s).map_err(|m| ("amount", m))?;
     let direction = match drcr.to_ascii_uppercase().as_str() {
