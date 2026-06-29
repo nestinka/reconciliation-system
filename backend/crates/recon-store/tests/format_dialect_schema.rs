@@ -51,3 +51,18 @@ async fn create_source_without_dialect_is_null(pool: sqlx::PgPool) {
         .unwrap();
     assert!(src.format_dialect.is_none());
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn create_source_with_pdf_profile_round_trips(pool: sqlx::PgPool) {
+    let store = recon_store::Store::from_pool(pool);
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('t','T','t')")
+        .execute(&store.pool).await.unwrap();
+    let src = store
+        .create_source("t", recon_domain::SourceKind::Bank, "PDF Bank", "GBP", "actor", None, Some("acmebank"))
+        .await
+        .unwrap();
+    assert_eq!(src.pdf_profile.as_deref(), Some("acmebank"));
+    // Re-read via get_source.
+    let got = store.get_source("t", &src.id).await.unwrap();
+    assert_eq!(got.pdf_profile.as_deref(), Some("acmebank"));
+}

@@ -35,6 +35,7 @@ async fn rename_only_changes_name_and_keeps_dialect_null(pool: sqlx::PgPool) {
         .unwrap();
     assert_eq!(updated.name, "Renamed");
     assert!(updated.format_dialect.is_none());
+    assert!(updated.pdf_profile.is_none());
 }
 
 #[sqlx::test(migrations = "../../migrations")]
