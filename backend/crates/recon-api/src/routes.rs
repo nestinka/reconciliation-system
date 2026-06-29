@@ -215,10 +215,7 @@ async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Jso
     Ok(Json(json!(s.store.list_sources(&ctx.tenant_id).await?)))
 }
 
-async fn list_pdf_profiles(
-    State(_s): State<AppState>,
-    _ctx: AuthContext,
-) -> Result<Json<Value>, ApiError> {
+async fn list_pdf_profiles(_ctx: AuthContext) -> Result<Json<Value>, ApiError> {
     // Authenticated read; profiles are not tenant-specific.
     Ok(Json(json!({ "profiles": recon_ingest::pdf::profile_names() })))
 }

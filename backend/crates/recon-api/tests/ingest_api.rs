@@ -416,12 +416,12 @@ async fn pdf_ingest_pipeline(pool: sqlx::PgPool) {
     let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
         .header("content-type", "application/json")
         .body(Body::from(r#"{"kind":"ledger","name":"No Profile","currency":"GBP"}"#)).unwrap();
-    let (_st, np) = json(&app, req).await;
+    let (st, np) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "create no-profile: {np}");
     let np_id = np["id"].as_str().unwrap().to_string();
-    let pdf2 = std::fs::read("../recon-ingest/tests/fixtures/pdf-acmebank.pdf").unwrap();
     let mut body = Vec::new();
     body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"s.pdf\"\r\n\r\n").as_bytes());
-    body.extend_from_slice(&pdf2);
+    body.extend_from_slice(&pdf);
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\npdf\r\n").as_bytes());
     body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
