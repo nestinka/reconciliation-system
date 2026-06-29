@@ -80,6 +80,12 @@ mod tests {
         assert!(resolve_profile("acmebank").is_some());
         assert!(resolve_profile("nope").is_none());
         assert_eq!(profile_names(), &["acmebank"]);
+        for name in profile_names() {
+            assert!(
+                resolve_profile(name).is_some(),
+                "profile_names lists {name} but resolve_profile returns None",
+            );
+        }
     }
 
     #[test]
