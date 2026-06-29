@@ -81,20 +81,20 @@ pub fn profile_names() -> &'static [&'static str] { &["acmebank"] }
 
 ### 3.2 `AcmeBankProfile`
 
-Targets a clean columnar statement: `Date | Description | Ref | Money-in | Money-out`. Example transaction lines after extraction:
+Targets a clean columnar statement: `Date  Description  Ref  Amount  Dr/Cr`. Columns are separated by runs of **two or more spaces**; description may contain single spaces. A single signed-by-marker amount column (not two money columns) is used deliberately: under text extraction an empty cell collapses to whitespace, so a two-column Money-in/Money-out layout can't be disambiguated without pixel geometry that `pdf-extract` does not reliably preserve. Example transaction lines after extraction:
 
 ```
-12/03/2026  CARD PURCHASE TESCO STORES 1234  REF A1B2C3      —      45.20
-13/03/2026  FASTER PAYMENT FROM J SMITH      REF Z9Y8X7   500.00      —
+12/03/2026  CARD PURCHASE TESCO STORES 1234  A1B2C3  45.20  DR
+13/03/2026  FASTER PAYMENT FROM J SMITH  Z9Y8X7  500.00  CR
 ```
 
 Logic:
-- A header/anchor row (e.g. a line containing `Date` and `Description`) marks the start of the transaction table; lines before it (statement metadata) are skipped.
-- Each transaction row is matched with a regex capturing `date · description · ref · money_in · money_out`.
-- `money_in` present → `Direction::Credit`; `money_out` present → `Direction::Debit`. Exactly one of the two columns is populated per row; both-empty or both-populated → `RowError` (`field:"amount"`). This is the two-column encoding the codebase already models as `debitCredit`.
-- `date` parsed with fixed `%d/%m/%Y` (UK statement convention) → `value_date` ISO `YYYY-MM-DD`.
-- Amounts parsed via the shared `parse_decimal_to_minor` helper → `amount_minor: i64`.
-- `external_ref` = the captured `REF …` token (required; missing → `RowError` `field:"ref"`).
+- A header/anchor row (a line containing both `Date` and `Description`) marks the start of the transaction table; lines before it (statement metadata) are skipped.
+- Each transaction row is split on runs of 2+ spaces into **exactly 5 fields**: `date`, `description`, `ref`, `amount`, `drcr`. A row that doesn't yield 5 fields → `RowError` (`field:"row"`, message includes the offending text).
+- `drcr` = `DR` → `Direction::Debit`, `CR` → `Direction::Credit`; anything else → `RowError` (`field:"direction"`).
+- `date` parsed with fixed `%d/%m/%Y` (UK statement convention) → `value_date` ISO `YYYY-MM-DD`; unparseable → `RowError` (`field:"date"`).
+- `amount` parsed via the shared `parse_decimal_to_minor` helper → `amount_minor: i64`; unparseable → `RowError` (`field:"amount"`). (The amount is always positive in the column; direction comes solely from the `DR`/`CR` marker.)
+- `external_ref` = the `ref` field (required, non-empty; empty → `RowError` `field:"ref"`).
 - `description` = the description column, trimmed.
 - `currency` = `None` from the parser (the `Source.currency` is authoritative, consistent with the other parsers); `counterparty`/`counterparty_bic`/`counterparty_account`/`posted_at` = `None` for v1 (YAGNI — counterparty extraction can fold into a later polish round).
 - Recognized non-transaction lines (page footers, `Balance carried forward`, blank separators) are skipped; any **other** unmatched line inside the table → `RowError` (`field:"row"`, message includes the offending text). Fail-loud, no silent skips.
@@ -106,8 +106,8 @@ Logic:
 ## 4. Fixtures & dependencies
 
 `backend/crates/recon-ingest/Cargo.toml`:
-- Runtime: `pdf-extract = "0.7"` (validate exact version during the spike; pin to the resolved version).
-- Dev-only: `printpdf = "0.7"` — used by a small `#[ignore]`d generator test/helper that deterministically produces the synthetic fixture, so the committed PDF is reproducible and reviewable rather than an opaque blob.
+- Runtime: `pdf-extract = "0.12"` — exposes `extract_text_from_mem(&[u8]) -> Result<String, _>`.
+- Dev-only: `printpdf = "0.9"` — used by a small `#[ignore]`d generator test that deterministically produces the synthetic fixture, so the committed PDF is reproducible and reviewable rather than an opaque blob. printpdf 0.9's op-based API (`Op::ShowText`/`Op::AddLineBreak`, `doc.with_pages(..).save(..)`) renders each statement row as one pre-spaced `ShowText` line, which `pdf-extract` returns intact — avoiding any reliance on geometry reconstruction.
 
 Fixtures in `backend/crates/recon-ingest/tests/fixtures/` (existing `{format}-{scenario}.{ext}` convention):
 - `pdf-acmebank.pdf` — committed synthetic statement (happy path: a few credits + debits).
@@ -158,13 +158,13 @@ One end-to-end test exercises `pdf-acmebank.pdf` bytes → `pdf-extract` → `Pa
 Fail-loud at every layer, matching the existing parsers:
 - No text layer (scanned PDF) → single `RowError{row:0, field:"document", …}` → 422.
 - Unmatched transaction line in the table → `RowError{field:"row", …}` → 422.
-- Bad date / bad amount / both-or-neither money column / missing ref → per-row `RowError` with the specific field → 422.
+- Bad date / bad amount / invalid `DR`/`CR` marker / empty ref / wrong field count → per-row `RowError` with the specific field → 422.
 - Duplicate `(source_id, external_ref)` → `StoreError::DuplicateRefs` → 409 with `refs`.
 - Unknown or missing PDF profile → 400 at the API.
 
 ## 9. Testing
 
-- **Profile unit tests** (`pdf.rs`): happy path on `pdf-acmebank.txt`; one test per rejection mode (bad date, both money columns, missing ref, unmatched row, empty/no-text).
+- **Profile unit tests** (`pdf.rs`): happy path on `pdf-acmebank.txt`; one test per rejection mode (bad date, bad amount, invalid Dr/Cr marker, empty ref, wrong field count, empty/no-text).
 - **End-to-end extraction test**: `pdf-acmebank.pdf` bytes → `pdf-extract` → expected `ParsedTxn`s (proves the extraction chain).
 - **Fixture generator**: `#[ignore]`d helper using `printpdf` that regenerates `pdf-acmebank.pdf` deterministically; documented so the fixture can be rebuilt/reviewed.
 - **API integration** (`recon-api/tests/ingest_api.rs`): real multipart PDF upload to a source with `pdf_profile="acmebank"` (success path); missing-profile → 400 case; `GET /api/pdf-profiles` returns the list.
