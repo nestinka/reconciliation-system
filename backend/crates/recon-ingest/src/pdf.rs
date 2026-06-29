@@ -1,6 +1,7 @@
 //! Text-layer PDF bank-statement parsing via per-bank profiles.
 
-use crate::{ParsedTxn, Parser, RowError};
+use crate::{money::parse_decimal_to_minor, ParsedTxn, Parser, RowError};
+use recon_domain::Direction;
 
 /// Extract the PDF text layer. Maps any reader failure to a single document-level
 /// RowError (row 0). A scanned/image-only PDF yields empty/whitespace text, which
@@ -65,15 +66,154 @@ impl PdfProfile for AcmeBankProfile {
     fn name(&self) -> &'static str {
         "acmebank"
     }
-    fn parse_lines(&self, _lines: &[String]) -> Result<Vec<ParsedTxn>, Vec<RowError>> {
-        Ok(Vec::new())
+
+    fn parse_lines(&self, lines: &[String]) -> Result<Vec<ParsedTxn>, Vec<RowError>> {
+        // The header row (contains both "date" and "description") anchors the table.
+        let start = lines.iter().position(|l| {
+            let lo = l.to_ascii_lowercase();
+            lo.contains("date") && lo.contains("description")
+        });
+        let Some(start) = start else {
+            return Err(vec![RowError::new(
+                0,
+                "document",
+                "no transaction table header found",
+            )]);
+        };
+
+        let mut out = Vec::new();
+        let mut errors = Vec::new();
+        for (i, line) in lines.iter().enumerate().skip(start + 1) {
+            if is_footer(line) {
+                continue;
+            }
+            // 1-based line number in the extracted text, for the row report.
+            let row_no = i + 1;
+            match parse_acme_row(line) {
+                Ok(txn) => out.push(txn),
+                Err((field, message)) => errors.push(RowError::new(row_no, field, message)),
+            }
+        }
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+        Ok(out)
     }
+}
+
+/// Recognized non-transaction lines that legitimately appear after the header.
+fn is_footer(line: &str) -> bool {
+    let lo = line.to_ascii_lowercase();
+    lo.contains("carried forward")
+        || lo.contains("brought forward")
+        || lo.starts_with("balance ")
+        || lo.starts_with("page ")
+        || lo.starts_with("statement ")
+}
+
+/// Split a row into columns on runs of 2+ spaces (descriptions use single spaces).
+fn split_columns(line: &str) -> Vec<&str> {
+    line.split("  ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn parse_acme_row(line: &str) -> Result<ParsedTxn, (&'static str, String)> {
+    let fields = split_columns(line);
+    if fields.len() != 5 {
+        return Err(("row", format!("expected 5 columns, got {}: {line}", fields.len())));
+    }
+    let (date_s, desc, reff, amount_s, drcr) =
+        (fields[0], fields[1], fields[2], fields[3], fields[4]);
+
+    let value_date = parse_uk_date(date_s).map_err(|m| ("date", m))?;
+    if reff.is_empty() {
+        return Err(("ref", "empty reference".to_string()));
+    }
+    // The amount column is always positive; direction comes from the DR/CR marker.
+    let amount_minor = parse_decimal_to_minor(amount_s).map_err(|m| ("amount", m))?;
+    let direction = match drcr.to_ascii_uppercase().as_str() {
+        "DR" => Direction::Debit,
+        "CR" => Direction::Credit,
+        other => return Err(("direction", format!("expected DR or CR, got {other}"))),
+    };
+
+    Ok(ParsedTxn {
+        external_ref: reff.to_string(),
+        value_date,
+        posted_at: None,
+        amount_minor,
+        currency: None,
+        direction,
+        counterparty: None,
+        description: desc.to_string(),
+        counterparty_bic: None,
+        counterparty_account: None,
+    })
+}
+
+/// Parse `DD/MM/YYYY` -> ISO `YYYY-MM-DD`.
+fn parse_uk_date(s: &str) -> Result<String, String> {
+    chrono::NaiveDate::parse_from_str(s, "%d/%m/%Y")
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .map_err(|_| format!("invalid date (expected DD/MM/YYYY): {s}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Parser;
+    use recon_domain::Direction;
+
+    fn lines(raw: &[&str]) -> Vec<String> {
+        raw.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_acme_rows_with_dr_cr() {
+        let input = lines(&[
+            "Date    Description    Ref    Amount    Dr/Cr",
+            "12/03/2026    CARD PURCHASE TESCO STORES 1234    A1B2C3    45.20    DR",
+            "13/03/2026    FASTER PAYMENT FROM J SMITH    Z9Y8X7    500.00    CR",
+        ]);
+        let txns = AcmeBankProfile.parse_lines(&input).unwrap();
+        assert_eq!(txns.len(), 2);
+        assert_eq!(txns[0].external_ref, "A1B2C3");
+        assert_eq!(txns[0].value_date, "2026-03-12");
+        assert_eq!(txns[0].amount_minor, 4520);
+        assert_eq!(txns[0].direction, Direction::Debit);
+        assert_eq!(txns[0].description, "CARD PURCHASE TESCO STORES 1234");
+        assert_eq!(txns[0].currency, None);
+        assert_eq!(txns[0].counterparty, None);
+        assert_eq!(txns[1].external_ref, "Z9Y8X7");
+        assert_eq!(txns[1].amount_minor, 50000);
+        assert_eq!(txns[1].direction, Direction::Credit);
+    }
+
+    #[test]
+    fn skips_metadata_before_header_and_footer_lines() {
+        let input = lines(&[
+            "AcmeBank Statement",
+            "Account 12345678",
+            "Date    Description    Ref    Amount    Dr/Cr",
+            "14/03/2026    DIRECT DEBIT BRITISH GAS    D4E5F6    88.10    DR",
+            "Balance carried forward    366.70",
+        ]);
+        let txns = AcmeBankProfile.parse_lines(&input).unwrap();
+        assert_eq!(txns.len(), 1);
+        assert_eq!(txns[0].external_ref, "D4E5F6");
+    }
+
+    #[test]
+    fn parses_the_real_extracted_fixture() {
+        let text = std::fs::read_to_string("tests/fixtures/pdf-acmebank.txt").expect("txt fixture");
+        let ls = normalize_lines(&text);
+        let txns = AcmeBankProfile.parse_lines(&ls).unwrap();
+        assert_eq!(txns.len(), 3, "fixture has 3 transaction rows");
+        assert_eq!(txns[0].external_ref, "A1B2C3");
+        assert_eq!(txns[2].external_ref, "D4E5F6");
+    }
 
     #[test]
     fn resolve_known_and_unknown_profiles() {
