@@ -76,7 +76,8 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
    Rabobank, and most other European banks. Leave **Not applicable** for any
    other format).
 3. Click **Upload** on the source row, choose **CSV**, **CAMT.053**, **MT940**,
-   **MT942**, or **BAI v2**, pick a file, and (for CSV only) map the columns by
+   **MT942**, **BAI v2**, or **PDF** (set a per-source PDF profile first), pick a
+   file, and (for CSV only) map the columns by
    0-based index + choose how amounts are encoded (single signed column, or
    separate debit/credit columns). Bad rows reject the whole file with a per-row
    report; re-uploading an already-loaded statement is rejected as a duplicate.
