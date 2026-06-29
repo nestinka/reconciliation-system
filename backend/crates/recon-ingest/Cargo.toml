@@ -10,6 +10,8 @@ thiserror = { workspace = true }
 csv = { workspace = true }
 quick-xml = { workspace = true }
 chrono = { workspace = true }
+pdf-extract = "0.12"
 
 [dev-dependencies]
 proptest = { workspace = true }
+printpdf = "0.9"
