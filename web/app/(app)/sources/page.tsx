@@ -103,6 +103,7 @@ export default function SourcesPage() {
   const { data: pdfProfiles = [] } = useQuery({
     queryKey: ["pdf-profiles", tenantId],
     queryFn: () => api.listPdfProfiles(tenantId),
+    enabled: showNew,
   });
 
   // Reset form state whenever the dialog is closed so a stale entry doesn't
@@ -319,6 +320,9 @@ export default function SourcesPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Set this if you will upload PDF bank statements to this source.
+              </p>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={createMutation.isPending}>

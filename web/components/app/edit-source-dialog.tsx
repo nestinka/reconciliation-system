@@ -176,6 +176,9 @@ export function EditSourceDialog({ source, open, onOpenChange }: Props) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Set this if you will upload PDF bank statements to this source.
+            </p>
           </div>
           <DialogFooter>
             <Button
