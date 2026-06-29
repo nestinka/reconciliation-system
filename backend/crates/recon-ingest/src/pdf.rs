@@ -277,6 +277,20 @@ mod tests {
         assert!(text.contains("FASTER PAYMENT FROM J SMITH"), "got:\n{text}");
     }
 
+    #[test]
+    fn end_to_end_pdf_bytes_to_transactions() {
+        let bytes = std::fs::read("tests/fixtures/pdf-acmebank.pdf").expect("fixture file");
+        let txns = PdfParser { profile: Box::new(AcmeBankProfile) }
+            .parse(&bytes)
+            .expect("parse ok");
+        assert_eq!(txns.len(), 3);
+        assert_eq!(txns[0].external_ref, "A1B2C3");
+        assert_eq!(txns[0].direction, Direction::Debit);
+        assert_eq!(txns[1].external_ref, "Z9Y8X7");
+        assert_eq!(txns[1].direction, Direction::Credit);
+        assert_eq!(txns[2].external_ref, "D4E5F6");
+    }
+
     fn header_plus(row: &str) -> Vec<String> {
         lines(&["Date    Description    Ref    Amount    Dr/Cr", row])
     }
