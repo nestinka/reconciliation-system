@@ -82,7 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         login_limiter,
     })
     .layer(TraceLayer::new_for_http())
-    .layer(cors);
+    .layer(cors)
+    .layer(tower_http::catch_panic::CatchPanicLayer::new());
 
     let bind = std::env::var("API_BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
     let listener = tokio::net::TcpListener::bind(&bind).await?;

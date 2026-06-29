@@ -7,8 +7,16 @@ use recon_domain::Direction;
 /// RowError (row 0). A scanned/image-only PDF yields empty/whitespace text, which
 /// the caller treats as "no text layer".
 pub(crate) fn extract_text(bytes: &[u8]) -> Result<String, Vec<RowError>> {
-    pdf_extract::extract_text_from_mem(bytes)
-        .map_err(|e| vec![RowError::new(0, "document", format!("could not read PDF: {e}"))])
+    let doc_err = || vec![RowError::new(0, "document", "could not read PDF (malformed or unsupported)")];
+    // pdf-extract panics on many malformed PDFs rather than returning Err; catch it
+    // so untrusted uploads always fail loud as a row-0 document error, never a
+    // dropped request.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        pdf_extract::extract_text_from_mem(bytes)
+    })) {
+        Ok(Ok(text)) => Ok(text),
+        Ok(Err(_)) | Err(_) => Err(doc_err()),
+    }
 }
 
 /// Per-bank PDF layout knowledge. Given the already-extracted, normalized lines,
@@ -236,6 +244,38 @@ mod tests {
             .unwrap_err();
         assert_eq!(err[0].row, 0);
         assert_eq!(err[0].field, "document");
+    }
+
+    #[test]
+    fn malformed_pdf_is_document_error_not_panic() {
+        // pdf-extract panics (not Err) on many malformed PDFs. Start from real
+        // fixture bytes and corrupt them several ways; whether extract_text hits
+        // the panic path (caught by catch_unwind) or a clean Err, both must
+        // collapse to the same row-0 "document" RowError without aborting.
+        let good = std::fs::read("tests/fixtures/pdf-acmebank.pdf").expect("fixture file");
+        let mut variants: Vec<Vec<u8>> = vec![
+            good[..good.len() / 2].to_vec(),        // truncated to half
+            good[..good.len().saturating_sub(64)].to_vec(), // drop trailer/xref tail
+        ];
+        // Flip bytes in the middle third.
+        let mut flipped = good.clone();
+        let (lo, hi) = (flipped.len() / 3, 2 * flipped.len() / 3);
+        for b in &mut flipped[lo..hi] {
+            *b ^= 0xFF;
+        }
+        variants.push(flipped);
+
+        let mut errored = 0;
+        for (i, bytes) in variants.iter().enumerate() {
+            // Both the panic path and the clean-Err path must yield the doc error;
+            // a variant that happens to still extract text is acceptable too.
+            if let Err(err) = extract_text(bytes) {
+                assert_eq!(err[0].row, 0, "variant {i}");
+                assert_eq!(err[0].field, "document", "variant {i}");
+                errored += 1;
+            }
+        }
+        assert!(errored > 0, "expected at least one corrupted variant to fail extraction");
     }
 
     #[test]
