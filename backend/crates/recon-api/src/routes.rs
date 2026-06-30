@@ -46,6 +46,7 @@ pub fn router(state: AppState) -> Router {
             "/api/sources/:source_id/ingest",
             post(ingest_source).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
+        .route("/api/pdf-profiles", get(list_pdf_profiles))
         .route("/api/runs", get(list_runs).post(create_run))
         .route("/api/runs/:run_id", get(get_run))
         .route("/api/breaks", get(list_breaks))
@@ -214,6 +215,11 @@ async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Jso
     Ok(Json(json!(s.store.list_sources(&ctx.tenant_id).await?)))
 }
 
+async fn list_pdf_profiles(_ctx: AuthContext) -> Result<Json<Value>, ApiError> {
+    // Authenticated read; profiles are not tenant-specific.
+    Ok(Json(json!({ "profiles": recon_ingest::pdf::profile_names() })))
+}
+
 async fn create_source(
     State(s): State<AppState>,
     ctx: AuthContext,
@@ -230,9 +236,15 @@ async fn create_source(
         Some("subfielded") => Some("subfielded"),
         Some(_) => return Err(ApiError::BadRequest()),
     };
+    // Validate pdf_profile against the parser registry.
+    let pdf_profile: Option<&str> = match body.pdf_profile.as_deref() {
+        None => None,
+        Some(name) if recon_ingest::pdf::resolve_profile(name).is_some() => Some(name),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
     let src = s
         .store
-        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, dialect)
+        .create_source(&ctx.tenant_id, body.kind, &body.name, &body.currency, &ctx.user_id, dialect, pdf_profile)
         .await?;
     Ok(Json(json!(src)))
 }
@@ -260,6 +272,15 @@ async fn patch_source(
             _ => return Err(ApiError::BadRequest()),
         },
     };
+    // Validate pdf_profile patch if present.
+    let pdf_profile_patch: Option<Option<&str>> = match body.pdf_profile {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(ref name)) => match recon_ingest::pdf::resolve_profile(name) {
+            Some(_) => Some(Some(name.as_str())),
+            None => return Err(ApiError::BadRequest()),
+        },
+    };
     let updated = s
         .store
         .update_source(
@@ -268,6 +289,7 @@ async fn patch_source(
             &ctx.user_id,
             body.name.as_deref().map(str::trim),
             dialect_patch,
+            pdf_profile_patch,
         )
         .await?;
     Ok(Json(json!(updated)))
@@ -358,6 +380,15 @@ async fn ingest_source(
             recon_ingest::mt942::Mt942Parser { dialect }.parse(&bytes)
         }
         "bai2" => recon_ingest::bai2::Bai2Parser.parse(&bytes),
+        "pdf" => {
+            let name = source
+                .pdf_profile
+                .as_deref()
+                .ok_or_else(ApiError::BadRequest)?;
+            let profile = recon_ingest::pdf::resolve_profile(name)
+                .ok_or_else(ApiError::BadRequest)?;
+            recon_ingest::pdf::PdfParser { profile }.parse(&bytes)
+        }
         _ => return Err(ApiError::BadRequest()),
     };
 

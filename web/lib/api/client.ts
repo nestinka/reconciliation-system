@@ -84,14 +84,18 @@ export interface CreateSourceInput {
   // sources ingested via MT940 ("generic" | "subfielded") — other formats leave
   // it null.
   formatDialect?: FormatDialect | null;
+  // Optional per-source PDF profile name (validated server-side against the registry).
+  pdfProfile?: string | null;
 }
 
 export interface UpdateSourceInput {
   name?: string;
   // null = clear; undefined = don't change; string = set.
   formatDialect?: FormatDialect | null;
+  // null = clear; undefined = don't change; string = set.
+  pdfProfile?: string | null;
 }
-export type IngestFormat = "csv" | "camt053" | "mt940" | "mt942" | "bai2";
+export type IngestFormat = "csv" | "camt053" | "mt940" | "mt942" | "bai2" | "pdf";
 export interface IngestResult { ingested: number; sourceId: string }
 export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
 
@@ -207,6 +211,7 @@ export interface ApiClient {
     event: NewCaseEvent
   ): Promise<Case>;
   listSources(tenantId: string): Promise<SourceListItem[]>;
+  listPdfProfiles(tenantId: string): Promise<string[]>;
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source>;
   updateSource(
     tenantId: string,

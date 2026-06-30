@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { PlusCircle, Upload as UploadIcon, Database } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +59,7 @@ const schema = z.object({
   // Optional MT940 dialect — null for non-MT940 sources, "generic" or
   // "subfielded" when the source receives MT940 statements.
   formatDialect: z.enum(["generic", "subfielded"]).nullable(),
+  pdfProfile: z.string().nullable(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -92,17 +93,24 @@ export default function SourcesPage() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { kind: "bank", currency: "GBP", formatDialect: null },
+    defaultValues: { kind: "bank", currency: "GBP", formatDialect: null, pdfProfile: null },
   });
 
   const kind = watch("kind");
   const formatDialect = watch("formatDialect");
+  const pdfProfile = watch("pdfProfile");
+
+  const { data: pdfProfiles = [] } = useQuery({
+    queryKey: ["pdf-profiles", tenantId],
+    queryFn: () => api.listPdfProfiles(tenantId),
+    enabled: showNew,
+  });
 
   // Reset form state whenever the dialog is closed so a stale entry doesn't
   // bleed into the next open (mirrors the UploadDialog reset-on-close pattern).
   useEffect(() => {
     if (!showNew) {
-      reset({ name: "", kind: "bank", currency: "GBP", formatDialect: null });
+      reset({ name: "", kind: "bank", currency: "GBP", formatDialect: null, pdfProfile: null });
     }
   }, [showNew, reset]);
 
@@ -287,6 +295,33 @@ export default function SourcesPage() {
                 Set this only if this source will receive MT940 statements. For
                 Deutsche Bank, ING, ABN AMRO, Rabobank, and most other European
                 banks, choose Subfielded.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="src-pdf-profile">
+                PDF profile{" "}
+                <span className="text-muted-foreground font-normal">
+                  (optional)
+                </span>
+              </Label>
+              <Select
+                value={pdfProfile ?? DIALECT_NONE}
+                onValueChange={(v) =>
+                  setValue("pdfProfile", v === DIALECT_NONE ? null : v)
+                }
+              >
+                <SelectTrigger id="src-pdf-profile" aria-label="PDF profile">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={DIALECT_NONE}>Not applicable</SelectItem>
+                  {pdfProfiles.map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Set this if you will upload PDF bank statements to this source.
               </p>
             </div>
             <DialogFooter>

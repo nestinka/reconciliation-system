@@ -79,6 +79,8 @@ pub struct CreateSourceReq {
     pub currency: String,
     #[serde(default)]
     pub format_dialect: Option<String>,
+    #[serde(default)]
+    pub pdf_profile: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -104,6 +106,8 @@ pub struct UpdateSourceReq {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_double_option")]
     pub format_dialect: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_double_option")]
+    pub pdf_profile: Option<Option<String>>,
 }
 
 fn deserialize_double_option<'de, D>(de: D) -> Result<Option<Option<String>>, D::Error>

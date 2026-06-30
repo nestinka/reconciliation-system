@@ -32,6 +32,7 @@ const BASE_SOURCE: Source = {
   name: "Bank A",
   currency: "EUR",
   formatDialect: null,
+  pdfProfile: null,
 };
 
 function makeQueryClient() {
@@ -110,6 +111,26 @@ describe("EditSourceDialog", () => {
       "tenant-acme",
       "src-1",
       expect.objectContaining({ name: "Bank A renamed" }),
+    );
+  });
+
+  it("submits pdfProfile when changed", async () => {
+    const user = userEvent.setup();
+    const base = new MockApiClient({ latencyMs: 0 });
+    const updateSpy = vi.fn(base.updateSource.bind(base));
+    const stubClient: ApiClient = Object.assign(base, { updateSource: updateSpy });
+
+    renderDialog(stubClient);
+
+    await user.click(screen.getByLabelText(/pdf profile/i));
+    await user.click(await screen.findByRole("option", { name: "acmebank" }));
+    await user.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalled());
+    expect(updateSpy).toHaveBeenCalledWith(
+      "tenant-acme",
+      "src-1",
+      expect.objectContaining({ pdfProfile: "acmebank" }),
     );
   });
 

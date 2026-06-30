@@ -427,6 +427,11 @@ export class MockApiClient implements ApiClient {
   // Sources
   // -------------------------------------------------------------------------
 
+  async listPdfProfiles(_tenantId: string): Promise<string[]> {
+    await this.delay();
+    return ["acmebank"];
+  }
+
   async listSources(tenantId: string): Promise<SourceListItem[]> {
     await this.delay();
     return this.state.sources
@@ -448,6 +453,7 @@ export class MockApiClient implements ApiClient {
       name: input.name,
       currency: input.currency,
       formatDialect: input.formatDialect ?? null,
+      pdfProfile: input.pdfProfile ?? null,
     };
     this.state.sources.push(deepClone(src));
     return src;
@@ -472,6 +478,7 @@ export class MockApiClient implements ApiClient {
       formatDialect: patch.formatDialect === undefined
         ? existing.formatDialect
         : patch.formatDialect,
+      pdfProfile: patch.pdfProfile === undefined ? existing.pdfProfile : patch.pdfProfile,
     };
     this.state.sources[idx] = updated;
     return deepClone(updated);

@@ -5,6 +5,7 @@ pub mod money;
 pub mod mt940;
 pub mod mt942;
 pub mod mt94x_shared;
+pub mod pdf;
 
 use recon_domain::Direction;
 

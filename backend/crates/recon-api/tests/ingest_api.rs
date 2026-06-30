@@ -371,6 +371,69 @@ const MT942_FIXTURE: &[u8] = b":20:INTRA-DAY-1
 ";
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn pdf_ingest_pipeline(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    // pdf-profiles endpoint lists the registry.
+    let req = Request::builder().method("GET").uri("/api/pdf-profiles")
+        .header("authorization", &auth).body(Body::empty()).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK);
+    assert!(v["profiles"].as_array().unwrap().contains(&Value::from("acmebank")));
+
+    // Create a source WITH a pdf profile.
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"PDF Bank","currency":"GBP","pdfProfile":"acmebank"}"#)).unwrap();
+    let (st, src) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "create: {src}");
+    assert_eq!(src["pdfProfile"], "acmebank");
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    // Upload the committed PDF fixture.
+    let pdf = std::fs::read("../recon-ingest/tests/fixtures/pdf-acmebank.pdf").expect("fixture");
+    let boundary = "BOUNDARY";
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"s.pdf\"\r\n\r\n").as_bytes());
+    body.extend_from_slice(&pdf);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\npdf\r\n").as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "pdf ingest: {v}");
+    assert_eq!(v["ingested"], 3);
+
+    // A source with NO pdf profile rejects pdf upload with 400.
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"ledger","name":"No Profile","currency":"GBP"}"#)).unwrap();
+    let (st, np) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "create no-profile: {np}");
+    let np_id = np["id"].as_str().unwrap().to_string();
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"s.pdf\"\r\n\r\n").as_bytes());
+    body.extend_from_slice(&pdf);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"format\"\r\n\r\npdf\r\n").as_bytes());
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{np_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "pdf upload without profile must 400");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn mt942_happy_path_ingest(pool: sqlx::PgPool) {
     recon_store::Store::from_pool(pool.clone())
         .seed()

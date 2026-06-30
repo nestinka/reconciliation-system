@@ -147,6 +147,7 @@ export function UploadDialog({
                 <SelectItem value="mt940">MT940 (SWIFT statement)</SelectItem>
                 <SelectItem value="mt942">MT942 (intra-day)</SelectItem>
                 <SelectItem value="bai2">BAI v2 (US bank file)</SelectItem>
+                <SelectItem value="pdf">PDF statement</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -155,6 +156,18 @@ export function UploadDialog({
             <p className="text-sm text-amber-600 dark:text-amber-400">
               This source has no MT940/MT942 dialect set. Using{" "}
               <strong>Generic</strong>. Edit the source to choose a dialect.
+            </p>
+          )}
+
+          {format === "pdf" && !source.pdfProfile && (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              This source has no PDF profile set. Edit the source to choose one
+              before uploading a PDF.
+            </p>
+          )}
+          {format === "pdf" && source.pdfProfile && (
+            <p className="text-sm text-muted-foreground">
+              Using PDF profile <strong>{source.pdfProfile}</strong>.
             </p>
           )}
 
@@ -313,7 +326,7 @@ export function UploadDialog({
         <DialogFooter>
           <Button
             onClick={() => mutation.mutate()}
-            disabled={!file || mutation.isPending}
+            disabled={!file || mutation.isPending || (format === "pdf" && !source.pdfProfile)}
           >
             {mutation.isPending ? "Uploading…" : "Upload"}
           </Button>
@@ -335,6 +348,8 @@ function fileAccept(format: IngestFormat): string {
       return ".mt942,.sta,.txt,text/plain";
     case "bai2":
       return ".bai,.bai2,.txt,text/plain";
+    case "pdf":
+      return ".pdf,application/pdf";
   }
 }
 
