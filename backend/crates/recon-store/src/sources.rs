@@ -142,6 +142,38 @@ impl Store {
         row.map(Into::into).ok_or(StoreError::NotFound)
     }
 
+    /// Archive (disabled=true) or restore (false) a source. Audited in the same
+    /// transaction as the update via `DataSourceArchived`.
+    pub async fn set_source_disabled(
+        &self,
+        tenant_id: &str,
+        source_id: &str,
+        disabled: bool,
+        actor_id: &str,
+    ) -> Result<(), StoreError> {
+        // Ensure the source exists in this tenant.
+        self.get_source(tenant_id, source_id).await?;
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("UPDATE sources SET disabled=$3 WHERE id=$1 AND tenant_id=$2")
+            .bind(source_id)
+            .bind(tenant_id)
+            .bind(disabled)
+            .execute(&mut *tx)
+            .await?;
+        self.append_audit(
+            &mut tx,
+            tenant_id,
+            actor_id,
+            recon_audit::AuditPayload::DataSourceArchived {
+                source_id: source_id.to_string(),
+                disabled,
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     pub async fn list_sources(&self, tenant_id: &str, include_archived: bool) -> Result<Vec<SourceListItem>, StoreError> {
         #[derive(sqlx::FromRow)]
         struct Row {
