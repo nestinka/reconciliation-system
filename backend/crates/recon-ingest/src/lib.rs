@@ -1,6 +1,7 @@
 pub mod bai2;
 pub mod camt053;
 pub mod csv;
+pub mod detect;
 pub mod money;
 pub mod mt940;
 pub mod mt942;
