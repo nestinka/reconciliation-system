@@ -127,7 +127,8 @@ active ones — archived rows are shown with reduced opacity and an **Archived**
 badge.
 
 Every archive and restore action is recorded in the compliance audit log as
-`data.source.archived` / `data.source.restored`.
+`data.source.archived`; the payload's `disabled` flag (`true` = archived,
+`false` = restored) distinguishes the two.
 
 ### Counterparty fields
 
