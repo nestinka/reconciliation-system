@@ -356,6 +356,21 @@ async fn ingest_source(
     let bytes = file.ok_or_else(ApiError::BadRequest)?;
     let format = format.ok_or_else(ApiError::BadRequest)?;
 
+    // format=auto: sniff the content to pick a concrete parser. CSV is never
+    // auto-detected (no signature; needs a column mapping) -> clear 400.
+    let format = if format == "auto" {
+        recon_ingest::detect::detect_format(&bytes)
+            .map(|f| f.to_string())
+            .ok_or_else(|| ApiError::with_details(
+                axum::http::StatusCode::BAD_REQUEST,
+                "bad_request",
+                "could not auto-detect format; select CSV (with a column mapping) or a specific format explicitly",
+                json!({}),
+            ))?
+    } else {
+        format
+    };
+
     let parsed = match format.as_str() {
         "csv" => {
             let raw = mapping_json.ok_or_else(ApiError::BadRequest)?;

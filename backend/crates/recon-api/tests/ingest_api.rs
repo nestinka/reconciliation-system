@@ -494,3 +494,38 @@ async fn mt942_happy_path_ingest(pool: sqlx::PgPool) {
     .unwrap();
     assert_eq!(body["ingested"], 2);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn auto_detect_dispatches_by_content(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Auto Bank","currency":"GBP","formatDialect":"generic"}"#)).unwrap();
+    let (st, src) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "create: {src}");
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    let mt940 = ":20:STMT001\r\n:25:12345\r\n:28C:1/1\r\n:60F:C260501GBP0,00\r\n:61:2605010501D45,20NTRFREF//BANK\r\n:86:PAYMENT\r\n:62F:C260501GBP45,20\r\n";
+    let boundary = "BOUNDARY";
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "auto")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "auto ingest: {v}");
+    assert_eq!(v["ingested"], 1);
+
+    let body = multipart_body(boundary, &[("file", Some("x.csv"), "ref,date,amount\nA1,2026-05-01,10.00\n"), ("format", None, "auto")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "auto cannot detect CSV");
+}
