@@ -190,4 +190,22 @@ mod tests {
         // amount 1 + date 1 + ref 0 -> 0.6 + 0.3 = 0.90
         assert!((score_pair(&a, &b) - 0.90).abs() < 1e-9);
     }
+
+    #[test]
+    fn mismatched_account_scores_lower() {
+        // Both carry an account, neither matches -> cpty term 0.0.
+        // amount 1 + date 1 + ref 0 + cpty 0 -> 0.5 + 0.25 + 0 + 0 = 0.75
+        let a = txn_cp("a", 1000, "2026-05-01", None, Some("GB29NWBK00000001"));
+        let b = txn_cp("b", 1000, "2026-05-01", None, Some("GB29NWBK99999999"));
+        assert!((score_pair(&a, &b) - 0.75).abs() < 1e-9);
+    }
+
+    #[test]
+    fn both_have_identifiers_but_different_fields_do_not_match() {
+        // Gate open on both sides (A has BIC, B has account), but no comparable
+        // field matches -> cpty term 0.0 -> 0.75.
+        let a = txn_cp("a", 1000, "2026-05-01", Some("DEUTDEFF"), None);
+        let b = txn_cp("b", 1000, "2026-05-01", None, Some("GB29NWBK00000001"));
+        assert!((score_pair(&a, &b) - 0.75).abs() < 1e-9);
+    }
 }
