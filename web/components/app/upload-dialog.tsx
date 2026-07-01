@@ -190,7 +190,7 @@ export function UploadDialog({
             </div>
           )}
 
-          {format === "pdf" && !source.pdfProfile && (
+          {format === "pdf" && !source.pdfProfile && !pdfProfileOverride && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
               This source has no PDF profile set. Edit the source to choose one
               before uploading a PDF.
