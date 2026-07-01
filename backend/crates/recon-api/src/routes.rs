@@ -345,11 +345,15 @@ async fn ingest_source(
     let mut file: Option<Vec<u8>> = None;
     let mut format: Option<String> = None;
     let mut mapping_json: Option<String> = None;
+    let mut dialect_override: Option<String> = None;
+    let mut pdf_profile_override: Option<String> = None;
     while let Some(field) = mp.next_field().await.map_err(|_| ApiError::BadRequest())? {
         match field.name() {
             Some("file") => file = Some(field.bytes().await.map_err(|_| ApiError::BadRequest())?.to_vec()),
             Some("format") => format = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
             Some("mapping") => mapping_json = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            Some("dialect") => dialect_override = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            Some("pdfProfile") => pdf_profile_override = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
             _ => {}
         }
     }
@@ -371,6 +375,19 @@ async fn ingest_source(
         format
     };
 
+    // Per-upload overrides take precedence over the source's stored setting.
+    let effective_dialect: Option<String> = match dialect_override.as_deref() {
+        None => source.format_dialect.clone(),
+        Some("generic") => Some("generic".to_string()),
+        Some("subfielded") => Some("subfielded".to_string()),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
+    let effective_pdf_profile: Option<String> = match pdf_profile_override.as_deref() {
+        None => source.pdf_profile.clone(),
+        Some(name) if recon_ingest::pdf::resolve_profile(name).is_some() => Some(name.to_string()),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
+
     let parsed = match format.as_str() {
         "csv" => {
             let raw = mapping_json.ok_or_else(ApiError::BadRequest)?;
@@ -380,15 +397,15 @@ async fn ingest_source(
         }
         "camt053" => recon_ingest::camt053::Camt053Parser.parse(&bytes),
         "mt940" => {
-            // Source's stored dialect picks the parser variant. NULL → Generic.
-            let dialect = match source.format_dialect.as_deref() {
+            // Effective dialect (upload override or source's stored value). NULL → Generic.
+            let dialect = match effective_dialect.as_deref() {
                 Some("subfielded") => recon_ingest::mt940::Mt940Dialect::Subfielded,
                 _ => recon_ingest::mt940::Mt940Dialect::Generic,
             };
             recon_ingest::mt940::Mt940Parser { dialect }.parse(&bytes)
         }
         "mt942" => {
-            let dialect = match source.format_dialect.as_deref() {
+            let dialect = match effective_dialect.as_deref() {
                 Some("subfielded") => recon_ingest::mt94x_shared::Mt94xDialect::Subfielded,
                 _ => recon_ingest::mt94x_shared::Mt94xDialect::Generic,
             };
@@ -396,8 +413,7 @@ async fn ingest_source(
         }
         "bai2" => recon_ingest::bai2::Bai2Parser.parse(&bytes),
         "pdf" => {
-            let name = source
-                .pdf_profile
+            let name = effective_pdf_profile
                 .as_deref()
                 .ok_or_else(ApiError::BadRequest)?;
             let profile = recon_ingest::pdf::resolve_profile(name)

@@ -496,6 +496,40 @@ async fn mt942_happy_path_ingest(pool: sqlx::PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn per_upload_dialect_override(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Ovr Bank","currency":"EUR","formatDialect":"generic"}"#)).unwrap();
+    let (_st, src) = json(&app, req).await;
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    let boundary = "B";
+    let mt940 = ":20:REF\r\n:25:1\r\n:28C:1/1\r\n:60F:C260501EUR0,00\r\n:61:2605010501D10,00NTRFR//B\r\n:86:X\r\n:62F:C260501EUR10,00\r\n";
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "mt940"), ("dialect", None, "bogus")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "invalid override rejected");
+
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "mt940"), ("dialect", None, "subfielded")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "override ingest: {v}");
+    assert_eq!(v["ingested"], 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn auto_detect_dispatches_by_content(pool: sqlx::PgPool) {
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
