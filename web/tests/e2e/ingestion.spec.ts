@@ -195,6 +195,37 @@ test("admin creates an MT940 source with subfielded dialect and ingests", async 
   await expect(uploadDialog).not.toBeVisible({ timeout: 10_000 });
 });
 
+test("archives a source so it leaves the active list", async ({ page }) => {
+  await loginViaUI(page, ADA_EMAIL, PASSWORD);
+
+  // ── Create a uniquely-named source ───────────────────────────────────────
+  await page.goto("/sources");
+  await page.getByRole("button", { name: /new source/i }).click();
+
+  const newSourceDialog = page.getByRole("dialog");
+  await expect(newSourceDialog).toBeVisible();
+
+  await newSourceDialog.getByLabel("Name").fill("E2E Archive Me");
+  // Kind defaults to "bank" — no change needed
+  await newSourceDialog.getByLabel("Currency").fill("GBP");
+  await newSourceDialog.getByRole("button", { name: /create source/i }).click();
+
+  // Dialog closes; source row appears in the table
+  await expect(newSourceDialog).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("cell", { name: "E2E Archive Me" })).toBeVisible();
+
+  // ── Archive the source via the row action button ──────────────────────────
+  await page
+    .getByRole("row", { name: /E2E Archive Me/i })
+    .getByRole("button", { name: /archive/i })
+    .click();
+
+  // After archiving, the row leaves the active list (showArchived defaults to false)
+  await expect(
+    page.getByRole("row", { name: /E2E Archive Me/i })
+  ).toHaveCount(0, { timeout: 10_000 });
+});
+
 test("ingests a PDF bank statement via the acmebank profile", async ({
   page,
 }) => {
@@ -243,8 +274,11 @@ test("ingests a PDF bank statement via the acmebank profile", async ({
     uploadDialog.getByText(/using pdf profile/i)
   ).toBeVisible({ timeout: 5_000 });
 
-  // Attach the fixture PDF
-  await uploadDialog.getByLabel("File").setInputFiles(PDF_ACMEBANK);
+  // Attach the fixture PDF.  Use locator('#up-file') to avoid the ambiguity
+  // between the "File" input label and the "PDF profile (override for this
+  // upload)" select label — Playwright's partial label match finds "file"
+  // inside "profile" when using getByLabel("File").
+  await page.locator("#up-file").setInputFiles(PDF_ACMEBANK);
 
   await uploadDialog.getByRole("button", { name: /^upload$/i }).click();
 

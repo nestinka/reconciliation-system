@@ -75,12 +75,21 @@ Password-reset emails are caught by Mailpit — open its UI at **http://localhos
    for plain MT94x, **Subfielded (DE/NL/BE)** for Deutsche Bank, ING, ABN AMRO,
    Rabobank, and most other European banks. Leave **Not applicable** for any
    other format).
-3. Click **Upload** on the source row, choose **CSV**, **CAMT.053**, **MT940**,
-   **MT942**, **BAI v2**, or **PDF** (set a per-source PDF profile first), pick a
-   file, and (for CSV only) map the columns by
-   0-based index + choose how amounts are encoded (single signed column, or
-   separate debit/credit columns). Bad rows reject the whole file with a per-row
-   report; re-uploading an already-loaded statement is rejected as a duplicate.
+3. Click **Upload** on the source row, choose the format, pick a file, and
+   supply any format-specific options:
+   - **Auto-detect** — choose Auto-detect to sniff the format from the file
+     content; CSV cannot be auto-detected (it must be uploaded explicitly with a
+     column mapping).
+   - **CSV** — map columns by 0-based index and choose how amounts are encoded
+     (single signed column, or separate debit/credit columns).
+   - **MT940 / MT942** — accept a per-upload dialect override (Generic or
+     Subfielded) that takes precedence over the source's default dialect for
+     that single upload.
+   - **PDF** — accept a per-upload profile override that takes precedence over
+     the source's default PDF profile for that single upload.
+
+   Bad rows reject the whole file with a per-row report; re-uploading an
+   already-loaded statement is rejected as a duplicate.
 4. Create a second source and upload its file.
 5. Go to **Runs** → **New run**, pick the two sources + a date window, and
    **Create run**. You land on the run detail with matches and breaks.
@@ -89,12 +98,13 @@ Supported formats:
 
 | Format | Notes |
 | --- | --- |
+| Auto-detect | Sniffs the format from file content; not available for CSV (must map columns explicitly) |
 | CSV | Per-upload column mapping; signed or debit/credit amount encodings |
 | CAMT.053 | ISO 20022 XML; entity-expansion safe |
-| MT940 | SWIFT customer statement; Generic or Subfielded dialect (per-source); Subfielded `?32` → counterparty account, `?33` → counterparty BIC; multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
-| MT942 | SWIFT intra-day report; same dialects as MT940; `:34F:` floor-limit and `:13D:` date/time tags parsed and discarded; declared `:90D:` / `:90C:` totals are sanity-checked against parsed counts + sums (mismatch rejects the file) |
+| MT940 | SWIFT customer statement; Generic or Subfielded dialect (per-source or per-upload override); Subfielded `?32` → counterparty account, `?33` → counterparty BIC; multi-message files fold into one upload; Latin-1 fallback on non-UTF-8 input |
+| MT942 | SWIFT intra-day report; same dialects as MT940 (per-source or per-upload override); `:34F:` floor-limit and `:13D:` date/time tags parsed and discarded; declared `:90D:` / `:90C:` totals are sanity-checked against parsed counts + sums (mismatch rejects the file) |
 | BAI v2 | US-bank cash-management format; built-in type-code → debit/credit mapping; `88` continuation records merge into the preceding `16` |
-| PDF | Text-layer bank statements; requires a per-source PDF profile (e.g. `acmebank`) — set it on the source before uploading. Scanned/image PDFs are not supported. |
+| PDF | Text-layer bank statements; requires a per-source PDF profile (e.g. `acmebank`) — set it on the source before uploading, or choose a per-upload profile override. Scanned/image PDFs are not supported. |
 
 The sources table shows an `MT940 · <dialect>` badge for sources with a dialect set (the dialect applies to both MT940 and MT942 uploads from the source).
 
@@ -106,6 +116,18 @@ of the sources table. Other fields (`kind`, `default currency`) are immutable;
 to change them, create a new source. The update emits a `source.updated` audit
 row inside the same DB transaction as the UPDATE, with the before/after diff in
 the payload.
+
+### Archiving a source
+
+Click **Archive** on any source row to hide it from the active list and block
+new uploads (the API returns `409 source is archived` until it is restored).
+Click **Restore** on an archived row to bring it back. Use the **Show archived**
+toggle at the top-right of the Sources page to view archived sources alongside
+active ones — archived rows are shown with reduced opacity and an **Archived**
+badge.
+
+Every archive and restore action is recorded in the compliance audit log as
+`data.source.archived` / `data.source.restored`.
 
 ### Counterparty fields
 
