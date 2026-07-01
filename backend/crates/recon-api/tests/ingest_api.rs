@@ -530,6 +530,49 @@ async fn per_upload_dialect_override(pool: sqlx::PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
+async fn archive_hides_source_and_blocks_ingest(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Arch Bank","currency":"GBP"}"#)).unwrap();
+    let (_st, src) = json(&app, req).await;
+    let id = src["id"].as_str().unwrap().to_string();
+
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/archive"))
+        .header("authorization", &auth).body(Body::empty()).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "archive");
+
+    let list = |uri: &str| { let auth = auth.clone(); let app = app.clone(); let uri = uri.to_string();
+        async move { let req = Request::builder().method("GET").uri(uri).header("authorization", &auth).body(Body::empty()).unwrap(); json(&app, req).await } };
+    let (_st, def) = list("/api/sources").await;
+    assert_eq!(def.as_array().unwrap().len(), 0, "archived hidden by default: {def}");
+    let (_st, inc) = list("/api/sources?includeArchived=1").await;
+    assert_eq!(inc.as_array().unwrap().len(), 1, "includeArchived shows it");
+
+    let boundary = "B";
+    let body = multipart_body(boundary, &[("file", Some("x.csv"), "ref,date,amount\nA1,2026-05-01,10.00\n"), ("format", None, "csv"),
+        ("mapping", None, r#"{"hasHeader":true,"delimiter":44,"externalRef":{"header":"ref"},"valueDate":{"header":"date"},"dateFormat":"%Y-%m-%d","amount":{"signed":{"column":{"header":"amount"},"debitWhenNegative":true}},"description":{"header":"ref"}}"#)]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/ingest"))
+        .header("authorization", &auth).header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::CONFLICT, "ingest to archived source is 409");
+
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/restore"))
+        .header("authorization", &auth).body(Body::empty()).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "restore");
+    let (_st, def2) = list("/api/sources").await;
+    assert_eq!(def2.as_array().unwrap().len(), 1, "restored source visible again");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
 async fn auto_detect_dispatches_by_content(pool: sqlx::PgPool) {
     sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
     sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();

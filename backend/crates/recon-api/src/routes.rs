@@ -46,6 +46,8 @@ pub fn router(state: AppState) -> Router {
             "/api/sources/:source_id/ingest",
             post(ingest_source).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
+        .route("/api/sources/:source_id/archive", post(archive_source))
+        .route("/api/sources/:source_id/restore", post(restore_source))
         .route("/api/pdf-profiles", get(list_pdf_profiles))
         .route("/api/runs", get(list_runs).post(create_run))
         .route("/api/runs/:run_id", get(get_run))
@@ -210,9 +212,15 @@ fn require_manage_data(ctx: &AuthContext) -> Result<(), ApiError> {
         .map_err(|_| ApiError::Forbidden())
 }
 
-async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
+async fn list_sources(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Query(q): Query<crate::dto::SourcesQ>,
+) -> Result<Json<Value>, ApiError> {
     require_manage_data(&ctx)?;
-    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id, false).await?)))
+    let include_archived = q.include_archived.as_deref() == Some("1")
+        || q.include_archived.as_deref() == Some("true");
+    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id, include_archived).await?)))
 }
 
 async fn list_pdf_profiles(_ctx: AuthContext) -> Result<Json<Value>, ApiError> {
@@ -295,6 +303,26 @@ async fn patch_source(
     Ok(Json(json!(updated)))
 }
 
+async fn archive_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    s.store.set_source_disabled(&ctx.tenant_id, &source_id, true, &ctx.user_id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn restore_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    s.store.set_source_disabled(&ctx.tenant_id, &source_id, false, &ctx.user_id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 // --- validation helpers ---
 fn valid_date(s: &str) -> bool {
     time::Date::parse(
@@ -341,6 +369,15 @@ async fn ingest_source(
 
     // Source must exist in tenant; also gives us the default currency.
     let source = s.store.get_source(&ctx.tenant_id, &source_id).await?;
+
+    if source.disabled {
+        return Err(ApiError::with_details(
+            axum::http::StatusCode::CONFLICT,
+            "conflict",
+            "source is archived",
+            json!({}),
+        ));
+    }
 
     let mut file: Option<Vec<u8>> = None;
     let mut format: Option<String> = None;

@@ -25,6 +25,13 @@ pub struct BreakQ {
     pub assignee_id: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SourcesQ {
+    #[serde(default)]
+    pub include_archived: Option<String>,
+}
+
 // --- New Auth/Admin DTOs ---
 
 #[derive(serde::Deserialize)]
