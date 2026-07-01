@@ -16,7 +16,7 @@ pub enum AuditKind {
     AuthPasswordChanged, AuthPasswordResetRequested, AuthPasswordResetCompleted,
     AuthRefreshReused, AuthTenantSwitched,
     AdminUserCreated, AdminUserRoleChanged, AdminUserDisabled, AdminUserEnabled, AdminUserRemoved,
-    DataSourceCreated, DataSourceUpdated, DataIngestCompleted, DataRunCreated,
+    DataSourceCreated, DataSourceUpdated, DataSourceArchived, DataIngestCompleted, DataRunCreated,
     CaseAssigned, CaseEventAppended,
     SystemAnchorCreated,
 }
@@ -44,6 +44,7 @@ impl AuditKind {
             AuditKind::AdminUserRemoved => "admin.user.removed",
             AuditKind::DataSourceCreated => "data.source.created",
             AuditKind::DataSourceUpdated => "data.source.updated",
+            AuditKind::DataSourceArchived => "data.source.archived",
             AuditKind::DataIngestCompleted => "data.ingest.completed",
             AuditKind::DataRunCreated => "data.run.created",
             AuditKind::CaseAssigned => "case.assigned",
@@ -71,6 +72,7 @@ impl AuditKind {
             "admin.user.removed" => AuditKind::AdminUserRemoved,
             "data.source.created" => AuditKind::DataSourceCreated,
             "data.source.updated" => AuditKind::DataSourceUpdated,
+            "data.source.archived" => AuditKind::DataSourceArchived,
             "data.ingest.completed" => AuditKind::DataIngestCompleted,
             "data.run.created" => AuditKind::DataRunCreated,
             "case.assigned" => AuditKind::CaseAssigned,
@@ -121,6 +123,7 @@ pub enum AuditPayload {
         before_format_dialect: Option<String>,
         after_format_dialect: Option<String>,
     },
+    DataSourceArchived { source_id: String, disabled: bool },
     DataIngestCompleted { source_id: String, format: String, file_sha256: String, bytes: i64, ingested: i64 },
     DataRunCreated { run_id: String, source_a_id: String, source_b_id: String, from: String, to: String, matched: i64, unmatched: i64 },
     CaseAssigned { case_id: String, break_id: String, assignee_id: String },
@@ -148,6 +151,7 @@ impl AuditPayload {
             AuditPayload::AdminUserRemoved { .. } => AuditKind::AdminUserRemoved,
             AuditPayload::DataSourceCreated { .. } => AuditKind::DataSourceCreated,
             AuditPayload::DataSourceUpdated { .. } => AuditKind::DataSourceUpdated,
+            AuditPayload::DataSourceArchived { .. } => AuditKind::DataSourceArchived,
             AuditPayload::DataIngestCompleted { .. } => AuditKind::DataIngestCompleted,
             AuditPayload::DataRunCreated { .. } => AuditKind::DataRunCreated,
             AuditPayload::CaseAssigned { .. } => AuditKind::CaseAssigned,
@@ -184,5 +188,13 @@ mod tests {
     fn payload_kind_matches_variant() {
         let p = AuditPayload::AuthLogout { user_id: "u".into(), ip: None };
         assert_eq!(p.kind(), AuditKind::AuthLogout);
+    }
+
+    #[test]
+    fn data_source_archived_kind_roundtrips() {
+        assert_eq!(AuditKind::DataSourceArchived.as_str(), "data.source.archived");
+        assert_eq!(AuditKind::from_str("data.source.archived"), Some(AuditKind::DataSourceArchived));
+        let p = AuditPayload::DataSourceArchived { source_id: "src-1".into(), disabled: true };
+        assert_eq!(p.kind(), AuditKind::DataSourceArchived);
     }
 }
