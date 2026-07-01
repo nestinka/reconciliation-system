@@ -350,6 +350,8 @@ function fileAccept(format: IngestFormat): string {
       return ".bai,.bai2,.txt,text/plain";
     case "pdf":
       return ".pdf,application/pdf";
+    case "auto":
+      return "";
   }
 }
 

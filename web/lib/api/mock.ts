@@ -432,16 +432,28 @@ export class MockApiClient implements ApiClient {
     return ["acmebank"];
   }
 
-  async listSources(tenantId: string): Promise<SourceListItem[]> {
+  async listSources(tenantId: string, includeArchived?: boolean): Promise<SourceListItem[]> {
     await this.delay();
     return this.state.sources
-      .filter((s) => s.tenantId === tenantId)
+      .filter((s) => s.tenantId === tenantId && (includeArchived || !s.disabled))
       .map((s) =>
         deepClone({
           ...s,
           txnCount: this.state.transactions.filter((t) => t.sourceId === s.id).length,
         })
       );
+  }
+
+  async archiveSource(tenantId: string, sourceId: string): Promise<void> {
+    await this.delay();
+    const s = this.state.sources.find((x) => x.id === sourceId && x.tenantId === tenantId);
+    if (s) s.disabled = true;
+  }
+
+  async restoreSource(tenantId: string, sourceId: string): Promise<void> {
+    await this.delay();
+    const s = this.state.sources.find((x) => x.id === sourceId && x.tenantId === tenantId);
+    if (s) s.disabled = false;
   }
 
   async createSource(tenantId: string, input: CreateSourceInput): Promise<Source> {
@@ -454,6 +466,7 @@ export class MockApiClient implements ApiClient {
       currency: input.currency,
       formatDialect: input.formatDialect ?? null,
       pdfProfile: input.pdfProfile ?? null,
+      disabled: false,
     };
     this.state.sources.push(deepClone(src));
     return src;
@@ -489,7 +502,9 @@ export class MockApiClient implements ApiClient {
     sourceId: string,
     format: IngestFormat, // eslint-disable-line @typescript-eslint/no-unused-vars
     file: File, // eslint-disable-line @typescript-eslint/no-unused-vars
-    mapping?: CsvMapping // eslint-disable-line @typescript-eslint/no-unused-vars
+    mapping?: CsvMapping, // eslint-disable-line @typescript-eslint/no-unused-vars
+    dialect?: string, // eslint-disable-line @typescript-eslint/no-unused-vars
+    pdfProfile?: string // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<IngestResult> {
     await this.delay();
     // The mock does not parse real bytes; it records a deterministic ingest so

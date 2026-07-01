@@ -27,6 +27,7 @@ const MOCK_SOURCE: SourceListItem = {
   currency: "GBP",
   formatDialect: null,
   txnCount: 0,
+  disabled: false,
 };
 
 const FIXTURE_USER = { id: "user-ada", name: "Ada", role: "admin" as const };
