@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,8 @@ export function UploadDialog({
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
   const [format, setFormat] = useState<IngestFormat>("csv");
+  const [dialectOverride, setDialectOverride] = useState<string>("");
+  const [pdfProfileOverride, setPdfProfileOverride] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<{
     kind: "parse" | "duplicate";
@@ -64,6 +66,12 @@ export function UploadDialog({
     setReport(null);
   }, [format]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const { data: pdfProfiles = [] } = useQuery({
+    queryKey: ["pdf-profiles", tenantId],
+    queryFn: () => api.listPdfProfiles(tenantId),
+    enabled: format === "pdf",
+  });
 
   // CSV mapping fields (indices, 0-based)
   const [hasHeader, setHasHeader] = useState(true);
@@ -107,7 +115,9 @@ export function UploadDialog({
         source.id,
         format,
         file,
-        format === "csv" ? buildMapping() : undefined
+        format === "csv" ? buildMapping() : undefined,
+        dialectOverride || undefined,
+        pdfProfileOverride || undefined,
       );
     },
     onSuccess: (res) => {
@@ -142,6 +152,7 @@ export function UploadDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="auto">Auto-detect</SelectItem>
                 <SelectItem value="csv">CSV (with column mapping)</SelectItem>
                 <SelectItem value="camt053">CAMT.053 (ISO 20022 XML)</SelectItem>
                 <SelectItem value="mt940">MT940 (SWIFT statement)</SelectItem>
@@ -152,11 +163,31 @@ export function UploadDialog({
             </Select>
           </div>
 
+          {format === "auto" && (
+            <p className="text-sm text-muted-foreground">
+              The format is detected from the file. CSV files must be uploaded with the explicit CSV format.
+            </p>
+          )}
+
           {(format === "mt940" || format === "mt942") && !source.formatDialect && (
             <p className="text-sm text-amber-600 dark:text-amber-400">
               This source has no MT940/MT942 dialect set. Using{" "}
               <strong>Generic</strong>. Edit the source to choose a dialect.
             </p>
+          )}
+
+          {(format === "mt940" || format === "mt942") && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="up-dialect-ovr">Dialect (override for this upload)</Label>
+              <Select value={dialectOverride || "__default__"} onValueChange={(v) => setDialectOverride(v === null || v === "__default__" ? "" : v)}>
+                <SelectTrigger id="up-dialect-ovr"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Use source default{source.formatDialect ? ` (${source.formatDialect})` : ""}</SelectItem>
+                  <SelectItem value="generic">Generic</SelectItem>
+                  <SelectItem value="subfielded">Subfielded (DE/NL/BE)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           )}
 
           {format === "pdf" && !source.pdfProfile && (
@@ -169,6 +200,19 @@ export function UploadDialog({
             <p className="text-sm text-muted-foreground">
               Using PDF profile <strong>{source.pdfProfile}</strong>.
             </p>
+          )}
+
+          {format === "pdf" && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="up-pdf-ovr">PDF profile (override for this upload)</Label>
+              <Select value={pdfProfileOverride || "__default__"} onValueChange={(v) => setPdfProfileOverride(v === null || v === "__default__" ? "" : v)}>
+                <SelectTrigger id="up-pdf-ovr"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__default__">Use source default{source.pdfProfile ? ` (${source.pdfProfile})` : ""}</SelectItem>
+                  {pdfProfiles.map((p) => (<SelectItem key={p} value={p}>{p}</SelectItem>))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
 
           <div className="flex flex-col gap-1.5">
@@ -326,7 +370,7 @@ export function UploadDialog({
         <DialogFooter>
           <Button
             onClick={() => mutation.mutate()}
-            disabled={!file || mutation.isPending || (format === "pdf" && !source.pdfProfile)}
+            disabled={!file || mutation.isPending || (format === "pdf" && !source.pdfProfile && !pdfProfileOverride)}
           >
             {mutation.isPending ? "Uploading…" : "Upload"}
           </Button>

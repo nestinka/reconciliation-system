@@ -177,7 +177,7 @@ describe("UploadDialog", () => {
     });
   });
 
-  it("shows MT940 and BAI2 in the format dropdown", async () => {
+  it("shows Auto-detect, MT940, and BAI2 in the format dropdown", async () => {
     const user = userEvent.setup();
     const client = new MockApiClient({ latencyMs: 0 });
     renderDialog(client);
@@ -186,7 +186,10 @@ describe("UploadDialog", () => {
     await user.click(screen.getByRole("combobox", { name: /format/i }));
 
     expect(
-      await screen.findByRole("option", { name: /CSV \(with column mapping\)/i })
+      await screen.findByRole("option", { name: /Auto-detect/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /CSV \(with column mapping\)/i })
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: /CAMT\.053/i })
@@ -253,6 +256,6 @@ describe("UploadDialog", () => {
     renderDialog(client);
     await user.click(screen.getByRole("combobox", { name: /format/i }));
     await user.click(await screen.findByRole("option", { name: /MT942/i }));
-    expect(screen.getByText(/MT940\/MT942 dialect|dialect/i)).toBeInTheDocument();
+    expect(screen.getByText(/MT940\/MT942 dialect/i)).toBeInTheDocument();
   });
 });
