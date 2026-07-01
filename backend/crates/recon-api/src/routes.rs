@@ -212,7 +212,7 @@ fn require_manage_data(ctx: &AuthContext) -> Result<(), ApiError> {
 
 async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
     require_manage_data(&ctx)?;
-    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id).await?)))
+    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id, false).await?)))
 }
 
 async fn list_pdf_profiles(_ctx: AuthContext) -> Result<Json<Value>, ApiError> {

@@ -65,6 +65,7 @@ impl Store {
             currency: currency.to_string(),
             format_dialect: format_dialect.map(|s| s.to_string()),
             pdf_profile: pdf_profile.map(|s| s.to_string()),
+            disabled: false,
         })
     }
 
@@ -127,12 +128,13 @@ impl Store {
             currency: before.currency,
             format_dialect: after_dialect,
             pdf_profile: after_pdf_profile,
+            disabled: before.disabled,
         })
     }
 
     pub async fn get_source(&self, tenant_id: &str, id: &str) -> Result<Source, StoreError> {
         let row: Option<SourceRow> =
-            sqlx::query_as("SELECT id,tenant_id,kind,name,currency,format_dialect,pdf_profile FROM sources WHERE id=$1 AND tenant_id=$2")
+            sqlx::query_as("SELECT id,tenant_id,kind,name,currency,format_dialect,pdf_profile,disabled FROM sources WHERE id=$1 AND tenant_id=$2")
                 .bind(id)
                 .bind(tenant_id)
                 .fetch_optional(&self.pool)
@@ -140,7 +142,7 @@ impl Store {
         row.map(Into::into).ok_or(StoreError::NotFound)
     }
 
-    pub async fn list_sources(&self, tenant_id: &str) -> Result<Vec<SourceListItem>, StoreError> {
+    pub async fn list_sources(&self, tenant_id: &str, include_archived: bool) -> Result<Vec<SourceListItem>, StoreError> {
         #[derive(sqlx::FromRow)]
         struct Row {
             id: String,
@@ -150,18 +152,20 @@ impl Store {
             currency: String,
             format_dialect: Option<String>,
             pdf_profile: Option<String>,
+            disabled: bool,
             txn_count: i64,
         }
         let rows: Vec<Row> = sqlx::query_as(
-            "SELECT s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile, \
+            "SELECT s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile, s.disabled, \
                     COUNT(t.id) AS txn_count \
              FROM sources s \
              LEFT JOIN canonical_transactions t ON t.source_id = s.id AND t.tenant_id = s.tenant_id \
-             WHERE s.tenant_id = $1 \
-             GROUP BY s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile \
+             WHERE s.tenant_id = $1 AND ($2 OR NOT s.disabled) \
+             GROUP BY s.id, s.tenant_id, s.kind, s.name, s.currency, s.format_dialect, s.pdf_profile, s.disabled \
              ORDER BY s.name",
         )
         .bind(tenant_id)
+        .bind(include_archived)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows
@@ -179,6 +183,7 @@ impl Store {
                     currency: r.currency,
                     format_dialect: r.format_dialect,
                     pdf_profile: r.pdf_profile,
+                    disabled: r.disabled,
                 },
                 txn_count: r.txn_count,
             })

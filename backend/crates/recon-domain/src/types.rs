@@ -107,6 +107,7 @@ pub struct Source {
     pub currency: String,
     pub format_dialect: Option<String>,
     pub pdf_profile: Option<String>,
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +205,7 @@ mod tests {
             currency: "USD".into(),
             format_dialect: None,
             pdf_profile: None,
+            disabled: false,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["tenantId"], "tenant-acme");
