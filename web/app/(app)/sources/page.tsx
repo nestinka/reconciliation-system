@@ -68,10 +68,21 @@ export default function SourcesPage() {
   const api = useApi();
   const { tenantId } = useTenant();
   const queryClient = useQueryClient();
-  const { data: sources, isLoading } = useSources();
+  const [showArchived, setShowArchived] = useState(false);
+  const { data: sources, isLoading } = useSources(showArchived);
   const [showNew, setShowNew] = useState(false);
   const [uploadTarget, setUploadTarget] = useState<SourceListItem | null>(null);
   const [editTarget, setEditTarget] = useState<SourceListItem | null>(null);
+
+  const archiveMutation = useMutation({
+    mutationFn: (s: SourceListItem) =>
+      s.disabled
+        ? api.restoreSource(tenantId, s.id)
+        : api.archiveSource(tenantId, s.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sources", tenantId] });
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (input: FormValues) => api.createSource(tenantId, input),
@@ -122,10 +133,21 @@ export default function SourcesPage() {
             title="Sources"
             description="Manage data sources and ingest bank/ledger files."
           />
-          <Button onClick={() => setShowNew(true)} className="gap-2">
-            <PlusCircle aria-hidden className="size-4" />
-            New source
-          </Button>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+                className="size-4 cursor-pointer"
+              />
+              Show archived
+            </label>
+            <Button onClick={() => setShowNew(true)} className="gap-2">
+              <PlusCircle aria-hidden className="size-4" />
+              New source
+            </Button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -148,10 +170,13 @@ export default function SourcesPage() {
               </TableHeader>
               <TableBody>
                 {sources?.map((s) => (
-                  <TableRow key={s.id}>
+                  <TableRow key={s.id} className={s.disabled ? "opacity-60" : undefined}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <span>{s.name}</span>
+                        {s.disabled && (
+                          <Badge variant="secondary" className="text-xs">Archived</Badge>
+                        )}
                         {s.formatDialect && (
                           <Badge variant="secondary" className="text-xs">
                             MT940 ·{" "}
@@ -170,6 +195,14 @@ export default function SourcesPage() {
                       {s.txnCount}
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 mr-1.5"
+                        onClick={() => archiveMutation.mutate(s)}
+                      >
+                        {s.disabled ? "Restore" : "Archive"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"

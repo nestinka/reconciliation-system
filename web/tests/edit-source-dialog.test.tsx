@@ -33,6 +33,7 @@ const BASE_SOURCE: Source = {
   currency: "EUR",
   formatDialect: null,
   pdfProfile: null,
+  disabled: false,
 };
 
 function makeQueryClient() {

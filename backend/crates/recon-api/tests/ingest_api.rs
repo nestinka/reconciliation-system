@@ -494,3 +494,115 @@ async fn mt942_happy_path_ingest(pool: sqlx::PgPool) {
     .unwrap();
     assert_eq!(body["ingested"], 2);
 }
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn per_upload_dialect_override(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Ovr Bank","currency":"EUR","formatDialect":"generic"}"#)).unwrap();
+    let (_st, src) = json(&app, req).await;
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    let boundary = "B";
+    let mt940 = ":20:REF\r\n:25:1\r\n:28C:1/1\r\n:60F:C260501EUR0,00\r\n:61:2605010501D10,00NTRFR//B\r\n:86:X\r\n:62F:C260501EUR10,00\r\n";
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "mt940"), ("dialect", None, "bogus")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "invalid override rejected");
+
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "mt940"), ("dialect", None, "subfielded")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "override ingest: {v}");
+    assert_eq!(v["ingested"], 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn archive_hides_source_and_blocks_ingest(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Arch Bank","currency":"GBP"}"#)).unwrap();
+    let (_st, src) = json(&app, req).await;
+    let id = src["id"].as_str().unwrap().to_string();
+
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/archive"))
+        .header("authorization", &auth).body(Body::empty()).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "archive");
+
+    let list = |uri: &str| { let auth = auth.clone(); let app = app.clone(); let uri = uri.to_string();
+        async move { let req = Request::builder().method("GET").uri(uri).header("authorization", &auth).body(Body::empty()).unwrap(); json(&app, req).await } };
+    let (_st, def) = list("/api/sources").await;
+    assert_eq!(def.as_array().unwrap().len(), 0, "archived hidden by default: {def}");
+    let (_st, inc) = list("/api/sources?includeArchived=1").await;
+    assert_eq!(inc.as_array().unwrap().len(), 1, "includeArchived shows it");
+
+    let boundary = "B";
+    let body = multipart_body(boundary, &[("file", Some("x.csv"), "ref,date,amount\nA1,2026-05-01,10.00\n"), ("format", None, "csv"),
+        ("mapping", None, r#"{"hasHeader":true,"delimiter":44,"externalRef":{"header":"ref"},"valueDate":{"header":"date"},"dateFormat":"%Y-%m-%d","amount":{"signed":{"column":{"header":"amount"},"debitWhenNegative":true}},"description":{"header":"ref"}}"#)]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/ingest"))
+        .header("authorization", &auth).header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::CONFLICT, "ingest to archived source is 409");
+
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{id}/restore"))
+        .header("authorization", &auth).body(Body::empty()).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "restore");
+    let (_st, def2) = list("/api/sources").await;
+    assert_eq!(def2.as_array().unwrap().len(), 1, "restored source visible again");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn auto_detect_dispatches_by_content(pool: sqlx::PgPool) {
+    sqlx::query("INSERT INTO tenants(id,name,slug) VALUES ('tenant-acme','Acme','acme')").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO users(id,name,email,disabled) VALUES ('user-ada','Ada','ada@acme.test',false)").execute(&pool).await.unwrap();
+    sqlx::query("INSERT INTO memberships(user_id,tenant_id,role) VALUES ('user-ada','tenant-acme','admin')").execute(&pool).await.unwrap();
+    let (app, cfg) = recon_api::test_app(pool);
+    let auth = format!("Bearer {}", token(&cfg, "tenant-acme"));
+
+    let req = Request::builder().method("POST").uri("/api/sources").header("authorization", &auth)
+        .header("content-type", "application/json")
+        .body(Body::from(r#"{"kind":"bank","name":"Auto Bank","currency":"GBP","formatDialect":"generic"}"#)).unwrap();
+    let (st, src) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "create: {src}");
+    let src_id = src["id"].as_str().unwrap().to_string();
+
+    let mt940 = ":20:STMT001\r\n:25:12345\r\n:28C:1/1\r\n:60F:C260501GBP0,00\r\n:61:2605010501D45,20NTRFREF//BANK\r\n:86:PAYMENT\r\n:62F:C260501GBP45,20\r\n";
+    let boundary = "BOUNDARY";
+    let body = multipart_body(boundary, &[("file", Some("s.sta"), mt940), ("format", None, "auto")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::OK, "auto ingest: {v}");
+    assert_eq!(v["ingested"], 1);
+
+    let body = multipart_body(boundary, &[("file", Some("x.csv"), "ref,date,amount\nA1,2026-05-01,10.00\n"), ("format", None, "auto")]);
+    let req = Request::builder().method("POST").uri(format!("/api/sources/{src_id}/ingest"))
+        .header("authorization", &auth)
+        .header("content-type", format!("multipart/form-data; boundary={boundary}"))
+        .body(Body::from(body)).unwrap();
+    let (st, _v) = json(&app, req).await;
+    assert_eq!(st, StatusCode::BAD_REQUEST, "auto cannot detect CSV");
+}

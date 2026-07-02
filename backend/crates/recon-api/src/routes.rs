@@ -46,6 +46,8 @@ pub fn router(state: AppState) -> Router {
             "/api/sources/:source_id/ingest",
             post(ingest_source).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
+        .route("/api/sources/:source_id/archive", post(archive_source))
+        .route("/api/sources/:source_id/restore", post(restore_source))
         .route("/api/pdf-profiles", get(list_pdf_profiles))
         .route("/api/runs", get(list_runs).post(create_run))
         .route("/api/runs/:run_id", get(get_run))
@@ -210,9 +212,15 @@ fn require_manage_data(ctx: &AuthContext) -> Result<(), ApiError> {
         .map_err(|_| ApiError::Forbidden())
 }
 
-async fn list_sources(State(s): State<AppState>, ctx: AuthContext) -> Result<Json<Value>, ApiError> {
+async fn list_sources(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Query(q): Query<crate::dto::SourcesQ>,
+) -> Result<Json<Value>, ApiError> {
     require_manage_data(&ctx)?;
-    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id).await?)))
+    let include_archived = q.include_archived.as_deref() == Some("1")
+        || q.include_archived.as_deref() == Some("true");
+    Ok(Json(json!(s.store.list_sources(&ctx.tenant_id, include_archived).await?)))
 }
 
 async fn list_pdf_profiles(_ctx: AuthContext) -> Result<Json<Value>, ApiError> {
@@ -295,6 +303,26 @@ async fn patch_source(
     Ok(Json(json!(updated)))
 }
 
+async fn archive_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    s.store.set_source_disabled(&ctx.tenant_id, &source_id, true, &ctx.user_id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn restore_source(
+    State(s): State<AppState>,
+    ctx: AuthContext,
+    Path(source_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_manage_data(&ctx)?;
+    s.store.set_source_disabled(&ctx.tenant_id, &source_id, false, &ctx.user_id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
 // --- validation helpers ---
 fn valid_date(s: &str) -> bool {
     time::Date::parse(
@@ -342,19 +370,60 @@ async fn ingest_source(
     // Source must exist in tenant; also gives us the default currency.
     let source = s.store.get_source(&ctx.tenant_id, &source_id).await?;
 
+    if source.disabled {
+        return Err(ApiError::with_details(
+            axum::http::StatusCode::CONFLICT,
+            "conflict",
+            "source is archived",
+            json!({}),
+        ));
+    }
+
     let mut file: Option<Vec<u8>> = None;
     let mut format: Option<String> = None;
     let mut mapping_json: Option<String> = None;
+    let mut dialect_override: Option<String> = None;
+    let mut pdf_profile_override: Option<String> = None;
     while let Some(field) = mp.next_field().await.map_err(|_| ApiError::BadRequest())? {
         match field.name() {
             Some("file") => file = Some(field.bytes().await.map_err(|_| ApiError::BadRequest())?.to_vec()),
             Some("format") => format = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
             Some("mapping") => mapping_json = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            Some("dialect") => dialect_override = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
+            Some("pdfProfile") => pdf_profile_override = Some(field.text().await.map_err(|_| ApiError::BadRequest())?),
             _ => {}
         }
     }
     let bytes = file.ok_or_else(ApiError::BadRequest)?;
     let format = format.ok_or_else(ApiError::BadRequest)?;
+
+    // format=auto: sniff the content to pick a concrete parser. CSV is never
+    // auto-detected (no signature; needs a column mapping) -> clear 400.
+    let format = if format == "auto" {
+        recon_ingest::detect::detect_format(&bytes)
+            .map(|f| f.to_string())
+            .ok_or_else(|| ApiError::with_details(
+                axum::http::StatusCode::BAD_REQUEST,
+                "bad_request",
+                "could not auto-detect format; select CSV (with a column mapping) or a specific format explicitly",
+                json!({}),
+            ))?
+    } else {
+        format
+    };
+
+    // Per-upload overrides take precedence over the source's stored setting.
+    let effective_dialect: Option<String> = match dialect_override.as_deref() {
+        None => source.format_dialect.clone(),
+        Some("generic") => Some("generic".to_string()),
+        Some("subfielded") => Some("subfielded".to_string()),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
+    let effective_pdf_profile: Option<String> = match pdf_profile_override.as_deref() {
+        None => source.pdf_profile.clone(),
+        Some(name) if recon_ingest::pdf::resolve_profile(name).is_some() => Some(name.to_string()),
+        Some(_) => return Err(ApiError::BadRequest()),
+    };
 
     let parsed = match format.as_str() {
         "csv" => {
@@ -365,15 +434,15 @@ async fn ingest_source(
         }
         "camt053" => recon_ingest::camt053::Camt053Parser.parse(&bytes),
         "mt940" => {
-            // Source's stored dialect picks the parser variant. NULL → Generic.
-            let dialect = match source.format_dialect.as_deref() {
+            // Effective dialect (upload override or source's stored value). NULL → Generic.
+            let dialect = match effective_dialect.as_deref() {
                 Some("subfielded") => recon_ingest::mt940::Mt940Dialect::Subfielded,
                 _ => recon_ingest::mt940::Mt940Dialect::Generic,
             };
             recon_ingest::mt940::Mt940Parser { dialect }.parse(&bytes)
         }
         "mt942" => {
-            let dialect = match source.format_dialect.as_deref() {
+            let dialect = match effective_dialect.as_deref() {
                 Some("subfielded") => recon_ingest::mt94x_shared::Mt94xDialect::Subfielded,
                 _ => recon_ingest::mt94x_shared::Mt94xDialect::Generic,
             };
@@ -381,8 +450,7 @@ async fn ingest_source(
         }
         "bai2" => recon_ingest::bai2::Bai2Parser.parse(&bytes),
         "pdf" => {
-            let name = source
-                .pdf_profile
+            let name = effective_pdf_profile
                 .as_deref()
                 .ok_or_else(ApiError::BadRequest)?;
             let profile = recon_ingest::pdf::resolve_profile(name)

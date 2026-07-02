@@ -95,7 +95,7 @@ export interface UpdateSourceInput {
   // null = clear; undefined = don't change; string = set.
   pdfProfile?: string | null;
 }
-export type IngestFormat = "csv" | "camt053" | "mt940" | "mt942" | "bai2" | "pdf";
+export type IngestFormat = "csv" | "camt053" | "mt940" | "mt942" | "bai2" | "pdf" | "auto";
 export interface IngestResult { ingested: number; sourceId: string }
 export interface CreateRunInput { name: string; sourceAId: string; sourceBId: string; from: string; to: string }
 
@@ -210,7 +210,7 @@ export interface ApiClient {
     caseId: string,
     event: NewCaseEvent
   ): Promise<Case>;
-  listSources(tenantId: string): Promise<SourceListItem[]>;
+  listSources(tenantId: string, includeArchived?: boolean): Promise<SourceListItem[]>;
   listPdfProfiles(tenantId: string): Promise<string[]>;
   createSource(tenantId: string, input: CreateSourceInput): Promise<Source>;
   updateSource(
@@ -218,7 +218,9 @@ export interface ApiClient {
     sourceId: string,
     patch: UpdateSourceInput,
   ): Promise<Source>;
-  ingestFile(tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult>;
+  archiveSource(tenantId: string, sourceId: string): Promise<void>;
+  restoreSource(tenantId: string, sourceId: string): Promise<void>;
+  ingestFile(tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping, dialect?: string, pdfProfile?: string): Promise<IngestResult>;
   createRun(tenantId: string, input: CreateRunInput): Promise<ReconciliationRun>;
   listAudit(tenantId: string, q?: AuditQuery): Promise<AuditPage>;
   verifyAudit(tenantId: string, body: VerifyRequest): Promise<VerifyResult>;

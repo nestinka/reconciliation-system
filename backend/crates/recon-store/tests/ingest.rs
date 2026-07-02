@@ -32,7 +32,7 @@ async fn create_and_list_sources(pool: sqlx::PgPool) {
     assert!(s.id.starts_with("src-"));
     let got = store.get_source("t", &s.id).await.unwrap();
     assert_eq!(got.name, "Acme Bank");
-    let list = store.list_sources("t").await.unwrap();
+    let list = store.list_sources("t", false).await.unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].txn_count, 0);
     // cross-tenant get is NotFound

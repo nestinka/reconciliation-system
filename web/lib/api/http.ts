@@ -85,7 +85,16 @@ export class HttpApiClient implements ApiClient {
     return this.req(`/api/cases/${caseId}/events`, tenantId, { method: "POST", body: JSON.stringify(event) });
   }
 
-  listSources(tenantId: string): Promise<SourceListItem[]> { return this.req("/api/sources", tenantId); }
+  listSources(tenantId: string, includeArchived?: boolean): Promise<SourceListItem[]> {
+    const q = includeArchived ? "?includeArchived=1" : "";
+    return this.req(`/api/sources${q}`, tenantId);
+  }
+  async archiveSource(tenantId: string, sourceId: string): Promise<void> {
+    await this.req(`/api/sources/${sourceId}/archive`, tenantId, { method: "POST" });
+  }
+  async restoreSource(tenantId: string, sourceId: string): Promise<void> {
+    await this.req(`/api/sources/${sourceId}/restore`, tenantId, { method: "POST" });
+  }
   async listPdfProfiles(tenantId: string): Promise<string[]> {
     const r = await this.req<{ profiles: string[] }>("/api/pdf-profiles", tenantId);
     return r.profiles;
@@ -126,12 +135,14 @@ export class HttpApiClient implements ApiClient {
   }
   listControls(): Promise<Control[]> { return this.req("/api/audit/controls", null); }
 
-  async ingestFile(_tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping): Promise<IngestResult> {
+  async ingestFile(_tenantId: string, sourceId: string, format: IngestFormat, file: File, mapping?: CsvMapping, dialect?: string, pdfProfile?: string): Promise<IngestResult> {
     const send = async (token: string | null): Promise<Response> => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("format", format);
       if (mapping) fd.append("mapping", JSON.stringify(mapping));
+      if (dialect) fd.append("dialect", dialect);
+      if (pdfProfile) fd.append("pdfProfile", pdfProfile);
       const headers: Record<string, string> = {};
       if (token) headers["Authorization"] = `Bearer ${token}`;
       // NOTE: do not set Content-Type — the browser sets the multipart boundary.
